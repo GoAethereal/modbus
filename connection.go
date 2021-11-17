@@ -13,7 +13,7 @@ type connection interface {
 	// All running reads and writes are canceled.
 	close() error
 	// read continuously reads from the connection
-	// and broadcasts incomming data to all attached listeners
+	// and broadcasts incoming data to all attached listeners
 	read(ctx context.Context, buf []byte) (err error)
 	// write sends the given adu to the connected endpoint.
 	write(ctx context.Context, adu []byte) (err error)
@@ -23,22 +23,13 @@ type connection interface {
 	listen(ctx context.Context, callback func(adu []byte, err error) (quit bool)) (cancel context.CancelFunc, done <-chan struct{})
 }
 
-func dial(ctx context.Context, kind string, endpoint string) (connection, error) {
-	d := net.Dialer{}
-	conn, err := d.DialContext(ctx, kind, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	return &network{mu: newMutex(), conn: conn}, nil
-}
-
-var _ connection = (*network)(nil)
-
 type network struct {
 	mu   mutex
 	l    list.List
 	conn net.Conn
 }
+
+var _ connection = (&network{})
 
 type receiver struct {
 	done     chan struct{}

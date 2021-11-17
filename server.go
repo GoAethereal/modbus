@@ -2,72 +2,56 @@ package modbus
 
 import (
 	"context"
-	"net"
 	"sync"
 )
 
 // Server is the go implementation of a modbus slave.
-// Once serving it will listen for incomming requests and forward them to the modbus.Handler h.
+// Once serving it will listen for incoming requests and forward them to the modbus.Handler h.
 // Generally the intended use is as follows:
 //	ctx := context.TODO()
-//	opts := modbus.Options{
+//	cfg := modbus.Config{
 //		Mode:     "tcp",
 //		Kind:     "tcp",
 //		Endpoint: "localhost:502",
 //	}
+//	s := cfg.Server()
 //	h := &modbus.Mux{/*define individual handlers*/}
-//	s := modbus.Server{}
 //
-//	log.Fatal(s.Serve(ctx,opts,h))
+//	log.Fatal(s.Serve(ctx,h))
 type Server struct {
-	mu sync.Mutex
-	f  framer
+	cfg Config
+	framer
 }
 
-// Serve starts the modbus server and listens for incomming requests.
+// Serve starts the modbus server and listens for incoming requests.
 // The Handler h is called for each inbound message.
 // h must be safe for use by multiple go routines.
-func (s *Server) Serve(ctx context.Context, opts Options, h Handler) (err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err = opts.Verify(); err != nil {
-		return err
-	}
-	if s.f, err = frame(opts.Mode); err != nil {
-		return err
-	}
-	l, err := net.Listen(opts.Kind, opts.Endpoint)
+func (s *Server) Serve(ctx context.Context, h Handler) error {
+	var wg sync.WaitGroup
+	l, err := s.cfg.listen(ctx)
 	if err != nil {
 		return err
 	}
-	var wg = sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		<-ctx.Done()
-		l.Close()
-	}()
 	for {
 		select {
 		case <-ctx.Done():
 			wg.Wait()
 			return ctx.Err()
 		default:
-			conn, err := l.Accept()
+			conn, err := l()
 			if err != nil {
 				continue
 			}
 			wg.Add(1)
-			go func(conn net.Conn) {
+			go func(conn connection) {
 				defer wg.Done()
-				c := &network{mu: make(mutex, 2), conn: conn}
-				c.mu.unlock()
-				s.handle(ctx, c, h)
+				s.handle(ctx, conn, h)
 			}(conn)
 		}
 	}
 }
 
+// handle starts up a new request handler for a given connection
 func (s *Server) handle(ctx context.Context, c connection, h Handler) {
 	defer c.close()
 	var wg sync.WaitGroup
@@ -76,14 +60,14 @@ func (s *Server) handle(ctx context.Context, c connection, h Handler) {
 		if err != nil {
 			return true
 		}
-		buf := s.f.buffer()
+		buf := s.buffer()
 		buf = buf[:copy(buf, adu)]
 		wg.Add(1)
 		go func(adu []byte) {
 			defer wg.Done()
 			var res []byte
 			var ex Exception
-			code, req, err := s.f.decode(adu)
+			code, req, err := s.decode(adu)
 
 			switch {
 			case err != nil:
@@ -91,19 +75,19 @@ func (s *Server) handle(ctx context.Context, c connection, h Handler) {
 			case code < 0x80:
 				res, ex = h.Handle(ctx, code, req)
 			default:
-				ex = ExIllegalFunction
+				ex = IllegalFunction
 			}
 
 			switch {
-			case ex != nil:
+			case ex != 0:
 				code |= 0x80
-				res = []byte{ex.Code()}
+				res = []byte{byte(ex)}
 			case len(res) > 252:
 				code |= 0x80
-				res = []byte{ExSlaveDeviceFailure.Code()}
+				res = []byte{byte(SlaveDeviceFailure)}
 			}
 
-			res, _ = s.f.reply(code, res, adu)
+			res, _ = s.reply(code, res, adu)
 			if err := c.write(ctx, res); err != nil {
 				return
 			}
@@ -111,7 +95,7 @@ func (s *Server) handle(ctx context.Context, c connection, h Handler) {
 		return false
 	})
 
-	c.read(ctx, s.f.buffer())
+	c.read(ctx, s.buffer())
 	<-wait
 	wg.Wait()
 }

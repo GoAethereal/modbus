@@ -3,53 +3,53 @@ package modbus
 import (
 	"context"
 	"encoding/binary"
+	"errors"
+	"fmt"
 )
 
 // Client is the go implementation of a modbus master.
 // Generally the intended use is as follows:
 //	ctx := context.TODO()
-//	opts := modbus.Options{
+//	cfg := modbus.Config{
 //		Mode:     "tcp",
 //		Kind:     "tcp",
 //		Endpoint: "localhost:502",
 //	}
-//	c := modbus.Client{}
+//	c := cfg.Client()
 //
-//	if err := c.Connect(ctx, opts); err != nil {
+//	if err := c.Connect(ctx); err != nil {
 //		log.Fatal(err)
 //	}
 //	defer c.Disconnect()
 //
 //	//use the client`s read/write methods like c.ReadCoils, etc
 type Client struct {
-	f framer
-	c connection
+	cfg Config
+	framer
+	connection
 }
 
 // Connect initializes the underlying connection and payload mode.
-// If all given options are valid the enpoint will be dialed in.
-func (c *Client) Connect(ctx context.Context, opts Options) (err error) {
-	c.Disconnect()
-	if err = opts.Verify(); err != nil {
+// If all given options are valid the endpoint will be dialed in.
+func (c *Client) Connect(ctx context.Context) (err error) {
+	if c.connection != nil {
+		return errors.New("modbus: already connected")
+	}
+	if c.connection, err = c.cfg.dial(ctx); err != nil {
 		return err
 	}
-	if c.f, err = frame(opts.Mode); err != nil {
-		return err
-	}
-	if c.c, err = dial(ctx, opts.Kind, opts.Endpoint); err != nil {
-		return err
-	}
-	go c.c.read(context.Background(), c.f.buffer())
+	go c.read(context.Background(), c.buffer())
 	return nil
 }
 
 // Disconnect shuts down the connection.
 // All running requests will be canceled as a result.
-func (c *Client) Disconnect() error {
-	if c.c != nil {
-		return c.c.close()
+func (c *Client) Disconnect() (err error) {
+	if c.connection != nil {
+		err = c.close()
+		c.connection = nil
 	}
-	return nil
+	return err
 }
 
 // Request encodes the request into a valid application data unit and sends it to the clients endpoint.
@@ -57,22 +57,22 @@ func (c *Client) Disconnect() error {
 // The method will return a nil response and an error if something went wrong.
 func (c *Client) Request(ctx context.Context, code byte, req []byte) (res []byte, err error) {
 	if code == 0 || code >= 0x80 {
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	}
-	if req, err = c.f.encode(code, req); err != nil {
+	if req, err = c.encode(code, req); err != nil {
 		return nil, err
 	}
 
-	cancel, wait := c.c.listen(ctx, func(adu []byte, er error) (quit bool) {
+	cancel, wait := c.listen(ctx, func(adu []byte, er error) (quit bool) {
 		if er != nil {
 			res, err = nil, er
 			return true
 		}
-		e := c.f.verify(req, adu)
+		e := c.verify(req, adu)
 		switch e {
 		case nil:
 			//needs check for exceptions
-			_, res, err = c.f.decode(req[:copy(req[:cap(req)], adu)])
+			_, res, err = c.decode(req[:copy(req[:cap(req)], adu)])
 		case ErrMissmatchedTransactionId:
 			return false
 		default:
@@ -81,7 +81,7 @@ func (c *Client) Request(ctx context.Context, code byte, req []byte) (res []byte
 		return true
 	})
 
-	if err := c.c.write(ctx, req); err != nil {
+	if err := c.write(ctx, req); err != nil {
 		cancel()
 		<-wait
 		return nil, err
@@ -100,18 +100,15 @@ func (c *Client) Request(ctx context.Context, code byte, req []byte) (res []byte
 // ReadCoils requests 1 to 2000 (quantity) contiguous coil states, starting from address.
 // On success returns a bool slice with size of quantity where false=OFF and true=ON.
 func (c *Client) ReadCoils(ctx context.Context, address, quantity uint16) (status []bool, err error) {
-	switch {
-	case quantity < 1 || quantity > 2000:
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if ex := boundCheck(address, quantity, 2000); ex != 0 {
+		return nil, ex
 	}
 	res, err := c.Request(ctx, 0x01, put(4, address, quantity))
 	switch {
 	case err != nil:
 		return nil, err
 	case len(res) != 1+int(byteCount(quantity)) || int(res[0]) != len(res)-1:
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
 	return bytesToBools(quantity, res[1:]), nil
 }
@@ -119,18 +116,15 @@ func (c *Client) ReadCoils(ctx context.Context, address, quantity uint16) (statu
 // ReadDiscreteInputs requests 1 to 2000 (quantity) contiguous discrete inputs, starting from address.
 // On success returns a bool slice with size of quantity where false=OFF and true=ON.
 func (c *Client) ReadDiscreteInputs(ctx context.Context, address, quantity uint16) (status []bool, err error) {
-	switch {
-	case quantity < 1 || quantity > 2000:
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if ex := boundCheck(address, quantity, 2000); ex != 0 {
+		return nil, ex
 	}
 	res, err := c.Request(ctx, 0x02, put(4, address, quantity))
 	switch {
 	case err != nil:
 		return nil, err
 	case len(res) != 1+int(byteCount(quantity)) || int(res[0]) != len(res)-1:
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
 	return bytesToBools(quantity, res[1:]), nil
 }
@@ -138,18 +132,15 @@ func (c *Client) ReadDiscreteInputs(ctx context.Context, address, quantity uint1
 // ReadHoldingRegisters reads from 1 to 125 (quantity) contiguous holding registers starting at address.
 // On success returns a byte slice with the response data which is 2*quantity in length.
 func (c *Client) ReadHoldingRegisters(ctx context.Context, address, quantity uint16) (values []byte, err error) {
-	switch {
-	case quantity < 1 || quantity > 125:
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if ex := boundCheck(address, quantity, 125); ex != 0 {
+		return nil, ex
 	}
 	res, err := c.Request(ctx, 0x03, put(4, address, quantity))
 	switch {
 	case err != nil:
 		return nil, err
 	case len(res) != 1+int(quantity)*2 || int(res[0]) != len(res)-1:
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
 	return res[1:], nil
 }
@@ -157,18 +148,15 @@ func (c *Client) ReadHoldingRegisters(ctx context.Context, address, quantity uin
 // ReadInputRegisters reads from 1 to 125 (quantity) contiguous input registers starting at address.
 // On success returns a byte slice with the response data which is 2*quantity in length.
 func (c *Client) ReadInputRegisters(ctx context.Context, address, quantity uint16) (values []byte, err error) {
-	switch {
-	case quantity < 1 || quantity > 125:
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if ex := boundCheck(address, quantity, 125); ex != 0 {
+		return nil, ex
 	}
 	res, err := c.Request(ctx, 0x04, put(4, address, quantity))
 	switch {
 	case err != nil:
 		return nil, err
 	case len(res) != 1+int(quantity)*2 || int(res[0]) != len(res)-1:
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
 	return res[1:], nil
 }
@@ -180,7 +168,7 @@ func (c *Client) WriteSingleCoil(ctx context.Context, address uint16, status boo
 	case err != nil:
 		return err
 	case len(res) != 4 || binary.BigEndian.Uint16(res) != address:
-		return ExSlaveDeviceFailure
+		return SlaveDeviceFailure
 	}
 	return nil
 }
@@ -192,7 +180,7 @@ func (c *Client) WriteSingleRegister(ctx context.Context, address, value uint16)
 	case err != nil:
 		return err
 	case len(res) != 4 || binary.BigEndian.Uint16(res) != address || binary.BigEndian.Uint16(res[2:]) != value:
-		return ExSlaveDeviceFailure
+		return SlaveDeviceFailure
 	}
 	return nil
 }
@@ -200,20 +188,16 @@ func (c *Client) WriteSingleRegister(ctx context.Context, address, value uint16)
 // WriteMultipleCoils sets the state of all coils starting at address to the value of status, where false=OFF and true=ON.
 // Status needs to be of length 1 to 1968.
 func (c *Client) WriteMultipleCoils(ctx context.Context, address uint16, status ...bool) (err error) {
-	l := len(status)
-	switch {
-	case l < 1 || l > 1968:
-		return ExIllegalDataValue
-	case int(address)+l > 0xFFFF:
-		return ExIllegalDataAddress
+	quantity := uint16(len(status))
+	if ex := boundCheck(address, quantity, 1968); ex != 0 {
+		return ex
 	}
-	quantity := uint16(l)
 	res, err := c.Request(ctx, 0x0F, put(5+byteCount(quantity), address, quantity, byte(byteCount(quantity)), status))
 	switch {
 	case err != nil:
 		return err
 	case binary.BigEndian.Uint16(res) != address || binary.BigEndian.Uint16(res[2:]) != quantity:
-		return ExSlaveDeviceFailure
+		return SlaveDeviceFailure
 	}
 	return nil
 }
@@ -222,19 +206,19 @@ func (c *Client) WriteMultipleCoils(ctx context.Context, address uint16, status 
 // Values must be a multiple of 2 and in the range of 2 to 246
 func (c *Client) WriteMultipleRegisters(ctx context.Context, address uint16, values []byte) (err error) {
 	l := len(values)
-	switch {
-	case l%2 != 0 || l == 0 || l > 246:
-		return ExIllegalDataValue
-	case int(address)+l > 0xFFFF:
-		return ExIllegalDataAddress
+	if l%2 != 0 {
+		return IllegalDataValue
 	}
-	quantity := uint16(l)
+	quantity := uint16(l) / 2
+	if ex := boundCheck(address, quantity, 246); ex != 0 {
+		return ex
+	}
 	res, err := c.Request(ctx, 0x10, put(5+l, address, quantity, byte(l), values))
 	switch {
 	case err != nil:
 		return err
 	case binary.BigEndian.Uint16(res) != address || binary.BigEndian.Uint16(res[2:]) != quantity:
-		return ExSlaveDeviceFailure
+		return SlaveDeviceFailure
 	}
 	return nil
 }
@@ -243,19 +227,23 @@ func (c *Client) WriteMultipleRegisters(ctx context.Context, address uint16, val
 // Also the values are written at wAddress.
 func (c *Client) ReadWriteMultipleRegisters(ctx context.Context, rAddress, rQuantity, wAddress uint16, values []byte) (res []byte, err error) {
 	l := len(values)
-	switch {
-	case rQuantity < 1 || rQuantity > 125 || l%2 != 0 || l == 0 || l/2 > 121:
-		return nil, ExIllegalDataValue
-	case int(rAddress)+int(rQuantity) > 0xFFFF || int(wAddress)+l/2 > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if l%2 != 0 {
+		return nil, IllegalDataValue
 	}
 	wQuantity := uint16(l) / 2
+	if ex := boundCheck(rAddress, rQuantity, 125); ex != 0 {
+		return nil, ex
+	}
+	if ex := boundCheck(wAddress, wQuantity, 121); ex != 0 {
+		return nil, ex
+	}
 	res, err = c.Request(ctx, 0x17, put(9+l, rAddress, rQuantity, wAddress, wQuantity, byte(l), values))
 	switch {
 	case err != nil:
 		return nil, err
-	case rQuantity != 2*uint16(res[0]):
-		return nil, ExSlaveDeviceFailure
+	case 2*rQuantity != uint16(res[0]):
+		fmt.Println(res)
+		return nil, SlaveDeviceFailure
 	}
 	return res[1:], nil
 }
