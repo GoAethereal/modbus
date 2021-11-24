@@ -29,6 +29,16 @@ func (mu mutex) unlock() {
 	mu <- struct{}{}
 }
 
+func boundCheck(address, quantity, limit uint16) Exception {
+	switch {
+	case quantity < 1 || quantity > limit:
+		return IllegalDataValue
+	case address > address+quantity-1:
+		return IllegalDataAddress
+	}
+	return 0
+}
+
 func byteCount(bitCount uint16) int {
 	return int((bitCount + 7) / 8)
 }

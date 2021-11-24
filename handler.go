@@ -59,7 +59,7 @@ func (h *Mux) Handle(ctx context.Context, code byte, req []byte) (res []byte, ex
 
 func (h *Mux) fallback(ctx context.Context, code byte, req []byte) (res []byte, ex Exception) {
 	if h.Fallback == nil {
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	}
 	return h.Fallback(ctx, code, req)
 }
@@ -67,109 +67,97 @@ func (h *Mux) fallback(ctx context.Context, code byte, req []byte) (res []byte, 
 func (h *Mux) readCoils(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadCoils == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) != 4:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	quantity := binary.BigEndian.Uint16(req[2:])
-	switch {
-	case quantity < 1 || quantity > 2000:
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if ex := boundCheck(address, quantity, 2000); ex != 0 {
+		return nil, ex
 	}
 	status, ex := h.ReadCoils(ctx, address, quantity)
 	switch {
-	case ex != nil:
+	case ex != 0:
 		return nil, ex
 	case len(status) != int(quantity):
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
-	return put(1+int(byteCount(quantity)), byte(byteCount(quantity)), status), nil
+	return put(1+int(byteCount(quantity)), byte(byteCount(quantity)), status), 0
 }
 
 func (h *Mux) readDiscreteInputs(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadDiscreteInputs == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) != 4:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	quantity := binary.BigEndian.Uint16(req[2:])
-	switch {
-	case quantity < 1 || quantity > 2000:
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if ex := boundCheck(address, quantity, 2000); ex != 0 {
+		return nil, ex
 	}
 	status, ex := h.ReadDiscreteInputs(ctx, address, quantity)
 	switch {
-	case ex != nil:
+	case ex != 0:
 		return nil, ex
 	case len(status) != int(quantity):
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
-	return put(1+int(byteCount(quantity)), byte(byteCount(quantity)), status), nil
+	return put(1+int(byteCount(quantity)), byte(byteCount(quantity)), status), 0
 }
 
 func (h *Mux) readHoldingRegisters(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadHoldingRegisters == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) != 4:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	quantity := binary.BigEndian.Uint16(req[2:])
-	switch {
-	case quantity < 1 || quantity > 125:
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if ex := boundCheck(address, quantity, 125); ex != 0 {
+		return nil, ex
 	}
 	values, ex := h.ReadHoldingRegisters(ctx, address, quantity)
 	switch {
-	case ex != nil:
+	case ex != 0:
 		return nil, ex
 	case len(values) != 2*int(quantity):
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
-	return put(1+int(quantity)*2, byte(quantity*2), values), nil
+	return put(1+int(quantity)*2, byte(quantity*2), values), 0
 }
 
 func (h *Mux) readInputRegisters(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadInputRegisters == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) != 4:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	quantity := binary.BigEndian.Uint16(req[2:])
-	switch {
-	case quantity < 1 || quantity > 125:
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if ex := boundCheck(address, quantity, 125); ex != 0 {
+		return nil, ex
 	}
 	values, ex := h.ReadInputRegisters(ctx, address, quantity)
 	switch {
-	case ex != nil:
+	case ex != 0:
 		return nil, ex
 	case len(values) != 2*int(quantity):
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
-	return put(1+int(quantity)*2, byte(quantity*2), values), nil
+	return put(1+int(quantity)*2, byte(quantity*2), values), 0
 }
 
 func (h *Mux) writeSingleCoil(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.WriteSingleCoil == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) != 4:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	status := false
@@ -178,94 +166,97 @@ func (h *Mux) writeSingleCoil(ctx context.Context, req []byte) (res []byte, ex E
 	case 0xFF00:
 		status = true
 	default:
-		return nil, ExIllegalDataValue
+		return nil, IllegalDataValue
 	}
-	if ex = h.WriteSingleCoil(ctx, address, status); ex != nil {
+	if ex = h.WriteSingleCoil(ctx, address, status); ex != 0 {
 		return nil, ex
 	}
-	return req, nil
+	return req, 0
 }
 
 func (h *Mux) writeSingleRegister(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.WriteSingleRegister == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) != 4:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	value := binary.BigEndian.Uint16(req[2:])
-	if ex = h.WriteSingleRegister(ctx, address, value); ex != nil {
+	if ex = h.WriteSingleRegister(ctx, address, value); ex != 0 {
 		return nil, ex
 	}
-	return req, nil
+	return req, 0
 }
 
 func (h *Mux) writeMultipleCoils(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.WriteMultipleCoils == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) < 6:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	quantity := binary.BigEndian.Uint16(req[2:])
-	switch {
-	case quantity < 1 || quantity > 1968 || len(req[5:]) != int(req[4]):
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if len(req[5:]) != int(req[4]) {
+		return nil, IllegalDataValue
 	}
-	if ex = h.WriteMultipleCoils(ctx, address, bytesToBools(quantity, req[5:])); ex != nil {
+	if ex := boundCheck(address, quantity, 1968); ex != 0 {
 		return nil, ex
 	}
-	return req[:4], nil
+	if ex = h.WriteMultipleCoils(ctx, address, bytesToBools(quantity, req[5:])); ex != 0 {
+		return nil, ex
+	}
+	return req[:4], 0
 }
 
 func (h *Mux) writeMultipleRegisters(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.WriteMultipleRegisters == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) < 6:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	quantity := binary.BigEndian.Uint16(req[2:])
-	switch {
-	case quantity < 1 || quantity > 123 || 2*quantity != uint16(req[4]) || int(req[4]) != len(req[5:]):
-		return nil, ExIllegalDataValue
-	case int(address)+int(quantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if 2*quantity != uint16(req[4]) || int(req[4]) != len(req[5:]) {
+		return nil, IllegalDataValue
 	}
-	if ex = h.WriteMultipleRegisters(ctx, address, req[5:]); ex != nil {
+	if ex := boundCheck(address, quantity, 123); ex != 0 {
 		return nil, ex
 	}
-	return req[:4], nil
+	if ex = h.WriteMultipleRegisters(ctx, address, req[5:]); ex != 0 {
+		return nil, ex
+	}
+	return req[:4], 0
 }
 
 func (h *Mux) readWriteMultipleRegisters(ctx context.Context, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadWriteMultipleRegisters == nil:
-		return nil, ExIllegalFunction
+		return nil, IllegalFunction
 	case len(req) < 11:
-		return nil, ExIllegalDataAddress
+		return nil, IllegalDataAddress
 	}
 	rAddress := binary.BigEndian.Uint16(req[0:])
 	rQuantity := binary.BigEndian.Uint16(req[2:])
 	wAddress := binary.BigEndian.Uint16(req[4:])
 	wQuantity := binary.BigEndian.Uint16(req[6:])
-	switch {
-	case rQuantity < 1 || rQuantity > 125 || wQuantity < 1 || wQuantity > 121 || rQuantity*2 != uint16(req[8]) || int(req[8]) != len(req[9:]):
-		return nil, ExIllegalDataValue
-	case int(rAddress)+int(rQuantity) > 0xFFFF || int(wAddress)+int(wQuantity) > 0xFFFF:
-		return nil, ExIllegalDataAddress
+	if rQuantity*2 != uint16(req[8]) || int(req[8]) != len(req[9:]) {
+		return nil, IllegalDataValue
+	}
+	if ex := boundCheck(rAddress, rQuantity, 125); ex != 0 {
+		return nil, ex
+	}
+	if ex := boundCheck(wAddress, wQuantity, 121); ex != 0 {
+		return nil, ex
 	}
 	res, ex = h.ReadWriteMultipleRegisters(ctx, rAddress, rQuantity, wAddress, req[9:])
 	switch {
-	case ex != nil:
+	case ex != 0:
 		return nil, ex
 	case len(res) != int(rQuantity)*2:
-		return nil, ExSlaveDeviceFailure
+		return nil, SlaveDeviceFailure
 	}
-	return put(1+len(res), byte(len(res)), res), nil
+	return put(1+len(res), byte(len(res)), res), 0
 }

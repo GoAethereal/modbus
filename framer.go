@@ -49,7 +49,7 @@ func (s *tcp) decode(adu []byte) (code byte, data []byte, err error) {
 		return 0, nil, errors.New("modbus: invalid request")
 	}
 	if adu[7] >= 0x80 {
-		return 0, nil, &exception{code: adu[8]}
+		return 0, nil, Exception(adu[8])
 	}
 	return adu[7], adu[8:], nil
 }
