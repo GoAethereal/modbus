@@ -1,8 +1,9 @@
 package modbus
 
 import (
-	"context"
 	"net"
+
+	"github.com/GoAethereal/cancel"
 )
 
 // Config are used to configure a modbus client or server
@@ -72,14 +73,14 @@ func (cfg Config) Server() *Server {
 
 // dial attempts to dial in the configured endpoint.
 // On success it will return the connection, otherwise an error.
-func (cfg Config) dial(ctx context.Context) (connection, error) {
+func (cfg Config) dial() (connection, error) {
 	switch cfg.Kind {
 	case "tcp":
-		conn, err := (&net.Dialer{}).DialContext(ctx, cfg.Kind, cfg.Endpoint)
+		conn, err := (&net.Dialer{}).Dial(cfg.Kind, cfg.Endpoint)
 		if err != nil {
 			return nil, err
 		}
-		return &network{mu: newMutex(), conn: conn}, nil
+		return &network{conn: conn}, nil
 	}
 	return nil, ErrInvalidParameter
 }
@@ -87,7 +88,7 @@ func (cfg Config) dial(ctx context.Context) (connection, error) {
 // listen creates a new listener on the configured endpoint.
 // If successfull a acceptor function will be returned.
 // The function will block until a new connection is established or an error occurs.
-func (cfg Config) listen(ctx context.Context) (fn func() (connection, error), err error) {
+func (cfg Config) listen(ctx cancel.Context) (fn func() (connection, error), err error) {
 	switch cfg.Kind {
 	case "tcp":
 		l, err := net.Listen(cfg.Kind, cfg.Endpoint)
@@ -101,7 +102,7 @@ func (cfg Config) listen(ctx context.Context) (fn func() (connection, error), er
 		}()
 		fn = func() (connection, error) {
 			conn, err := l.Accept()
-			return &network{mu: newMutex(), conn: conn}, err
+			return &network{conn: conn}, err
 		}
 
 	}

@@ -2,10 +2,11 @@ package modbus
 
 import (
 	"container/list"
-	"context"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/GoAethereal/cancel"
 )
 
 type connection interface {
@@ -14,17 +15,17 @@ type connection interface {
 	close() error
 	// read continuously reads from the connection
 	// and broadcasts incoming data to all attached listeners
-	read(ctx context.Context, buf []byte) (err error)
+	read(ctx cancel.Context, buf []byte) (err error)
 	// write sends the given adu to the connected endpoint.
-	write(ctx context.Context, adu []byte) (err error)
+	write(ctx cancel.Context, adu []byte) (err error)
 	// listen attaches the given callback function to the connection.
 	// The callback will be eventually removed if the context is canceled
 	// or immediately if quit=true is returned.
-	listen(ctx context.Context, callback func(adu []byte, err error) (quit bool)) (cancel context.CancelFunc, done <-chan struct{})
+	listen(ctx cancel.Context, callback func(adu []byte, err error) (quit bool)) (done <-chan struct{})
 }
 
 type network struct {
-	mu   mutex
+	mu   sync.Mutex
 	l    list.List
 	conn net.Conn
 }
@@ -40,7 +41,7 @@ func (c *network) close() error {
 	return c.conn.Close()
 }
 
-func (c *network) read(ctx context.Context, buf []byte) (err error) {
+func (c *network) read(ctx cancel.Context, buf []byte) (err error) {
 	c.conn.SetReadDeadline(time.Time{})
 	done := make(chan struct{})
 	var wg sync.WaitGroup
@@ -65,11 +66,9 @@ func (c *network) read(ctx context.Context, buf []byte) (err error) {
 	}
 }
 
-func (c *network) broadcast(ctx context.Context, adu []byte, err error) {
-	if c.mu.lock(ctx) != nil {
-		return
-	}
-	defer c.mu.unlock()
+func (c *network) broadcast(ctx cancel.Context, adu []byte, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	var n *list.Element
 	for e := c.l.Front(); e != nil; e = n {
 		n = e.Next()
@@ -81,11 +80,9 @@ func (c *network) broadcast(ctx context.Context, adu []byte, err error) {
 	}
 }
 
-func (c *network) write(ctx context.Context, adu []byte) (err error) {
-	if err = c.mu.lock(ctx); err != nil {
-		return err
-	}
-	defer c.mu.unlock()
+func (c *network) write(ctx cancel.Context, adu []byte) (err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	var wg sync.WaitGroup
 	c.conn.SetWriteDeadline(time.Time{})
 	done := make(chan struct{})
@@ -104,20 +101,17 @@ func (c *network) write(ctx context.Context, adu []byte) (err error) {
 	return err
 }
 
-func (c *network) listen(ctx context.Context, callback func(adu []byte, err error) (quit bool)) (cancel context.CancelFunc, done <-chan struct{}) {
-	if c.mu.lock(ctx) != nil {
-		return nil, nil
-	}
-	defer c.mu.unlock()
-	ctx, cancel = context.WithCancel(ctx)
+func (c *network) listen(ctx cancel.Context, callback func(adu []byte, err error) (quit bool)) (done <-chan struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	r := receiver{done: make(chan struct{}), callback: callback}
 	e := c.l.PushFront(r)
 	go func() {
 		select {
 		case <-done:
 		case <-ctx.Done():
-			c.mu.lock(context.Background())
-			defer c.mu.unlock()
+			c.mu.Lock()
+			defer c.mu.Unlock()
 			select {
 			case <-done:
 			default:
@@ -126,5 +120,5 @@ func (c *network) listen(ctx context.Context, callback func(adu []byte, err erro
 			}
 		}
 	}()
-	return cancel, r.done
+	return r.done
 }

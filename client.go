@@ -5,11 +5,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
+	"github.com/GoAethereal/cancel"
 )
 
 // Client is the go implementation of a modbus master.
 // Generally the intended use is as follows:
-//	ctx := context.TODO()
+//
 //	cfg := modbus.Config{
 //		Mode:     "tcp",
 //		Kind:     "tcp",
@@ -17,7 +19,7 @@ import (
 //	}
 //	c := cfg.Client()
 //
-//	if err := c.Connect(ctx); err != nil {
+//	if err := c.Connect(); err != nil {
 //		log.Fatal(err)
 //	}
 //	defer c.Disconnect()
@@ -31,11 +33,11 @@ type Client struct {
 
 // Connect initializes the underlying connection and payload mode.
 // If all given options are valid the endpoint will be dialed in.
-func (c *Client) Connect(ctx context.Context) (err error) {
+func (c *Client) Connect() (err error) {
 	if c.connection != nil {
 		return errors.New("modbus: already connected")
 	}
-	if c.connection, err = c.cfg.dial(ctx); err != nil {
+	if c.connection, err = c.cfg.dial(); err != nil {
 		return err
 	}
 	go c.read(context.Background(), c.buffer())
@@ -55,7 +57,7 @@ func (c *Client) Disconnect() (err error) {
 // Request encodes the request into a valid application data unit and sends it to the clients endpoint.
 // Only function codes below 0x80 are accepted.
 // The method will return a nil response and an error if something went wrong.
-func (c *Client) Request(ctx context.Context, code byte, req []byte) (res []byte, err error) {
+func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte, err error) {
 	if code == 0 || code >= 0x80 {
 		return nil, IllegalFunction
 	}
@@ -63,7 +65,9 @@ func (c *Client) Request(ctx context.Context, code byte, req []byte) (res []byte
 		return nil, err
 	}
 
-	cancel, wait := c.listen(ctx, func(adu []byte, er error) (quit bool) {
+	sig := cancel.New().Propagate(ctx)
+
+	wait := c.listen(sig, func(adu []byte, er error) (quit bool) {
 		if er != nil {
 			res, err = nil, er
 			return true
@@ -82,7 +86,7 @@ func (c *Client) Request(ctx context.Context, code byte, req []byte) (res []byte
 	})
 
 	if err := c.write(ctx, req); err != nil {
-		cancel()
+		sig.Cancel()
 		<-wait
 		return nil, err
 	}
@@ -91,7 +95,7 @@ func (c *Client) Request(ctx context.Context, code byte, req []byte) (res []byte
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, context.Canceled
 	default:
 		return res, err
 	}
@@ -99,7 +103,7 @@ func (c *Client) Request(ctx context.Context, code byte, req []byte) (res []byte
 
 // ReadCoils requests 1 to 2000 (quantity) contiguous coil states, starting from address.
 // On success returns a bool slice with size of quantity where false=OFF and true=ON.
-func (c *Client) ReadCoils(ctx context.Context, address, quantity uint16) (status []bool, err error) {
+func (c *Client) ReadCoils(ctx cancel.Context, address, quantity uint16) (status []bool, err error) {
 	if ex := boundCheck(address, quantity, 2000); ex != 0 {
 		return nil, ex
 	}
@@ -115,7 +119,7 @@ func (c *Client) ReadCoils(ctx context.Context, address, quantity uint16) (statu
 
 // ReadDiscreteInputs requests 1 to 2000 (quantity) contiguous discrete inputs, starting from address.
 // On success returns a bool slice with size of quantity where false=OFF and true=ON.
-func (c *Client) ReadDiscreteInputs(ctx context.Context, address, quantity uint16) (status []bool, err error) {
+func (c *Client) ReadDiscreteInputs(ctx cancel.Context, address, quantity uint16) (status []bool, err error) {
 	if ex := boundCheck(address, quantity, 2000); ex != 0 {
 		return nil, ex
 	}
@@ -131,7 +135,7 @@ func (c *Client) ReadDiscreteInputs(ctx context.Context, address, quantity uint1
 
 // ReadHoldingRegisters reads from 1 to 125 (quantity) contiguous holding registers starting at address.
 // On success returns a byte slice with the response data which is 2*quantity in length.
-func (c *Client) ReadHoldingRegisters(ctx context.Context, address, quantity uint16) (values []byte, err error) {
+func (c *Client) ReadHoldingRegisters(ctx cancel.Context, address, quantity uint16) (values []byte, err error) {
 	if ex := boundCheck(address, quantity, 125); ex != 0 {
 		return nil, ex
 	}
@@ -147,7 +151,7 @@ func (c *Client) ReadHoldingRegisters(ctx context.Context, address, quantity uin
 
 // ReadInputRegisters reads from 1 to 125 (quantity) contiguous input registers starting at address.
 // On success returns a byte slice with the response data which is 2*quantity in length.
-func (c *Client) ReadInputRegisters(ctx context.Context, address, quantity uint16) (values []byte, err error) {
+func (c *Client) ReadInputRegisters(ctx cancel.Context, address, quantity uint16) (values []byte, err error) {
 	if ex := boundCheck(address, quantity, 125); ex != 0 {
 		return nil, ex
 	}
@@ -162,7 +166,7 @@ func (c *Client) ReadInputRegisters(ctx context.Context, address, quantity uint1
 }
 
 // WriteSingleCoil sets the output of the coil at address to ON=true or OFF=false.
-func (c *Client) WriteSingleCoil(ctx context.Context, address uint16, status bool) (err error) {
+func (c *Client) WriteSingleCoil(ctx cancel.Context, address uint16, status bool) (err error) {
 	res, err := c.Request(ctx, 0x05, put(4, address, status))
 	switch {
 	case err != nil:
@@ -174,7 +178,7 @@ func (c *Client) WriteSingleCoil(ctx context.Context, address uint16, status boo
 }
 
 // WriteSingleRegister writes value to a single holding register at address.
-func (c *Client) WriteSingleRegister(ctx context.Context, address, value uint16) (err error) {
+func (c *Client) WriteSingleRegister(ctx cancel.Context, address, value uint16) (err error) {
 	res, err := c.Request(ctx, 0x06, put(4, address, value))
 	switch {
 	case err != nil:
@@ -187,7 +191,7 @@ func (c *Client) WriteSingleRegister(ctx context.Context, address, value uint16)
 
 // WriteMultipleCoils sets the state of all coils starting at address to the value of status, where false=OFF and true=ON.
 // Status needs to be of length 1 to 1968.
-func (c *Client) WriteMultipleCoils(ctx context.Context, address uint16, status ...bool) (err error) {
+func (c *Client) WriteMultipleCoils(ctx cancel.Context, address uint16, status ...bool) (err error) {
 	quantity := uint16(len(status))
 	if ex := boundCheck(address, quantity, 1968); ex != 0 {
 		return ex
@@ -204,7 +208,7 @@ func (c *Client) WriteMultipleCoils(ctx context.Context, address uint16, status 
 
 // WriteMultipleRegisters writes the values to the holding registers at address.
 // Values must be a multiple of 2 and in the range of 2 to 246
-func (c *Client) WriteMultipleRegisters(ctx context.Context, address uint16, values []byte) (err error) {
+func (c *Client) WriteMultipleRegisters(ctx cancel.Context, address uint16, values []byte) (err error) {
 	l := len(values)
 	if l%2 != 0 {
 		return IllegalDataValue
@@ -225,7 +229,7 @@ func (c *Client) WriteMultipleRegisters(ctx context.Context, address uint16, val
 
 // ReadWriteMultipleRegisters reads a contiguous block of holding registers (rQuantity) from rAddress.
 // Also the values are written at wAddress.
-func (c *Client) ReadWriteMultipleRegisters(ctx context.Context, rAddress, rQuantity, wAddress uint16, values []byte) (res []byte, err error) {
+func (c *Client) ReadWriteMultipleRegisters(ctx cancel.Context, rAddress, rQuantity, wAddress uint16, values []byte) (res []byte, err error) {
 	l := len(values)
 	if l%2 != 0 {
 		return nil, IllegalDataValue
