@@ -29,10 +29,8 @@ The following points are available for the server **and** client implementation.
 * function code 0x10: Write Multiple Registers
 * function code 0x17: Read/Write Multiple Registers
 
-These functionalities are yet to be implemented:
+These functionalities are yet to be implemented: 
 
-* add go doc 
-* add test cases and benchmarks
 * serial networking
 * UDP networking
 * modbus RTU payload framing
@@ -48,64 +46,10 @@ These functionalities are yet to be implemented:
 * function code 0x18: Read FIFO Queue
 * function code 0x2B: Encapsulated Interface Transport
 
-## Usage
-
-The next section describes the general means of installing and using this package.
-
-### Installation
+## Installation
 
 Use the following command in a go mod initialized project.
 
 ```
 go get github.com/GoAethereal/modbus
-```
-### Client
-
-```go
-ctx := context.TODO()
-
-opts := modbus.Options{
-	Mode:     "tcp",
-	Kind:     "tcp",
-	Endpoint: "localhost:502",
-}
-
-c := modbus.Client{}
-
-// connect to the endpoint
-if err := c.Connect(ctx, opts); err != nil {
-	log.Fatal(err)
-}
-defer c.Disconnect()
-
-// request 2 registers starting at address 0
-res, err := c.ReadHoldingRegisters(ctx, 0, 2)
-if err != nil {
-	log.Fatal(err)
-}
-
-fmt.Println(res)
-```
-
-### Server
-
-```go
-ctx := context.TODO()
-
-opts := modbus.Options{
-	Mode:     "tcp",
-	Kind:     "tcp",
-	Endpoint: "localhost:502",
-}
-
-myHandler := func(ctx context.Context, address, quantity uint16) (res []byte, ex modbus.Exception) {
-	// Handle request logic
-	return res, nil
-}
-
-h := &modbus.Mux{ReadHoldingRegisters: myHandler}
-
-s := modbus.Server{}
-
-log.Fatal(s.Serve(ctx, opts, h))
 ```

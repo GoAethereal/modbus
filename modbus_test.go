@@ -1,11 +1,11 @@
 package modbus_test
 
 import (
-	"context"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/GoAethereal/cancel"
 	"github.com/GoAethereal/modbus"
 )
 
@@ -31,11 +31,11 @@ func TestReadCoils(t *testing.T) {
 		{65535, 1}: {false},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadCoils: func(ctx context.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
+		ReadCoils: func(ctx cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -45,7 +45,7 @@ func TestReadCoils(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client connection refused: %v", err)
 	}
 	defer c.Disconnect()
@@ -73,11 +73,11 @@ func TestReadDiscreteInputs(t *testing.T) {
 		{65535, 1}: {false},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadDiscreteInputs: func(ctx context.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
+		ReadDiscreteInputs: func(ctx cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -87,7 +87,7 @@ func TestReadDiscreteInputs(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client connection refused: %v", err)
 	}
 	defer c.Disconnect()
@@ -115,11 +115,11 @@ func TestReadHoldingRegisters(t *testing.T) {
 		{65535, 1}: {1, 0},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadHoldingRegisters: func(ctx context.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
+		ReadHoldingRegisters: func(ctx cancel.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -129,7 +129,7 @@ func TestReadHoldingRegisters(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client connection refused: %v", err)
 	}
 	defer c.Disconnect()
@@ -157,11 +157,11 @@ func TestReadInputRegisters(t *testing.T) {
 		{65535, 1}: {1, 0},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadInputRegisters: func(ctx context.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
+		ReadInputRegisters: func(ctx cancel.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -171,7 +171,7 @@ func TestReadInputRegisters(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client connection refused: %v", err)
 	}
 	defer c.Disconnect()
@@ -199,11 +199,11 @@ func TestWriteSingleCoil(t *testing.T) {
 		65535: true,
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteSingleCoil: func(ctx context.Context, address uint16, status bool) (ex modbus.Exception) {
+		WriteSingleCoil: func(ctx cancel.Context, address uint16, status bool) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				if want != status {
 					t.Errorf("server received unexpected value handling function code WriteSingleCoil at address %v, got %v; wanted: %v", address, status, want)
@@ -218,7 +218,7 @@ func TestWriteSingleCoil(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client connection refused: %v", err)
 	}
 	defer c.Disconnect()
@@ -240,11 +240,11 @@ func TestWriteSingleRegister(t *testing.T) {
 		65535: 42,
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteSingleRegister: func(ctx context.Context, address uint16, value uint16) (ex modbus.Exception) {
+		WriteSingleRegister: func(ctx cancel.Context, address uint16, value uint16) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				if want != value {
 					t.Errorf("server received unexpected value handling function code WriteSingleRegister at address %v, got %v; wanted: %v", address, value, want)
@@ -259,7 +259,7 @@ func TestWriteSingleRegister(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client connection refused: %v", err)
 	}
 	defer c.Disconnect()
@@ -281,11 +281,11 @@ func TestWriteMultipleCoils(t *testing.T) {
 		65535: {false},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteMultipleCoils: func(ctx context.Context, address uint16, status []bool) (ex modbus.Exception) {
+		WriteMultipleCoils: func(ctx cancel.Context, address uint16, status []bool) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				for i := range want {
 					if want[i] != status[i] {
@@ -302,7 +302,7 @@ func TestWriteMultipleCoils(t *testing.T) {
 
 	time.Sleep(1 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client: connection refused: %v", err)
 	}
 	defer c.Disconnect()
@@ -324,11 +324,11 @@ func TestWriteMultipleRegisters(t *testing.T) {
 		65535: {0, 1},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteMultipleRegisters: func(ctx context.Context, address uint16, values []byte) (ex modbus.Exception) {
+		WriteMultipleRegisters: func(ctx cancel.Context, address uint16, values []byte) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				for i := range want {
 					if want[i] != values[i] {
@@ -345,7 +345,7 @@ func TestWriteMultipleRegisters(t *testing.T) {
 
 	time.Sleep(1 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client: connection refused: %v", err)
 	}
 	defer c.Disconnect()
@@ -367,11 +367,11 @@ func TestReadWriteMultipleRegisters(t *testing.T) {
 		{65535, 1, 65535}: {{1, 0}, {0, 1}},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := cancel.New()
+	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadWriteMultipleRegisters: func(ctx context.Context, rAddress uint16, rQuantity uint16, wAddress uint16, values []byte) (res []byte, ex modbus.Exception) {
+		ReadWriteMultipleRegisters: func(ctx cancel.Context, rAddress uint16, rQuantity uint16, wAddress uint16, values []byte) (res []byte, ex modbus.Exception) {
 			if want, ok := testCases[[3]uint16{rAddress, rQuantity, wAddress}]; ok {
 				for i, v := range want[1] {
 					if v != values[i] {
@@ -388,7 +388,7 @@ func TestReadWriteMultipleRegisters(t *testing.T) {
 
 	time.Sleep(1 * time.Millisecond)
 
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		t.Fatalf("client: connection refused: %v", err)
 	}
 	defer c.Disconnect()

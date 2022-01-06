@@ -15,14 +15,6 @@ type framer interface {
 	reply(code byte, data, req []byte) (res []byte, err error)
 }
 
-func frame(mode string) (framer, error) {
-	switch mode {
-	case "tcp":
-		return &tcp{}, nil
-	}
-	return nil, ErrInvalidParameter
-}
-
 var _ framer = (*tcp)(nil)
 
 type tcp struct {

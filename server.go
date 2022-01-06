@@ -1,14 +1,15 @@
 package modbus
 
 import (
-	"context"
 	"sync"
+
+	"github.com/GoAethereal/cancel"
 )
 
 // Server is the go implementation of a modbus slave.
 // Once serving it will listen for incoming requests and forward them to the modbus.Handler h.
 // Generally the intended use is as follows:
-//	ctx := context.TODO()
+//	ctx := cancel.New()
 //	cfg := modbus.Config{
 //		Mode:     "tcp",
 //		Kind:     "tcp",
@@ -26,7 +27,7 @@ type Server struct {
 // Serve starts the modbus server and listens for incoming requests.
 // The Handler h is called for each inbound message.
 // h must be safe for use by multiple go routines.
-func (s *Server) Serve(ctx context.Context, h Handler) error {
+func (s *Server) Serve(ctx cancel.Context, h Handler) error {
 	var wg sync.WaitGroup
 	l, err := s.cfg.listen(ctx)
 	if err != nil {
@@ -36,7 +37,7 @@ func (s *Server) Serve(ctx context.Context, h Handler) error {
 		select {
 		case <-ctx.Done():
 			wg.Wait()
-			return ctx.Err()
+			return nil
 		default:
 			conn, err := l()
 			if err != nil {
@@ -52,11 +53,11 @@ func (s *Server) Serve(ctx context.Context, h Handler) error {
 }
 
 // handle starts up a new request handler for a given connection
-func (s *Server) handle(ctx context.Context, c connection, h Handler) {
+func (s *Server) handle(ctx cancel.Context, c connection, h Handler) {
 	defer c.close()
 	var wg sync.WaitGroup
 
-	_, wait := c.listen(ctx, func(adu []byte, err error) (quit bool) {
+	wait := c.listen(ctx, func(adu []byte, err error) (quit bool) {
 		if err != nil {
 			return true
 		}

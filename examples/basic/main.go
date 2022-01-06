@@ -1,10 +1,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"time"
 
+	"github.com/GoAethereal/cancel"
 	"github.com/GoAethereal/modbus"
 )
 
@@ -14,7 +14,7 @@ var cfg = modbus.Config{
 	Endpoint: "localhost:1337",
 }
 
-var ctx, cancel = context.WithCancel(context.Background())
+var ctx = cancel.New()
 
 func main() {
 	// start the modbus master
@@ -29,7 +29,7 @@ func server() {
 	// start serving the function codes read coils and write multiple registers
 	s.Serve(ctx, &modbus.Mux{
 		// ReadCoils will always respond with an alternating pattern of coil states
-		ReadCoils: func(ctx context.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
+		ReadCoils: func(ctx cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
 			res = make([]bool, quantity)
 			for i := range res {
 				res[i] = i%2 == 0
@@ -37,7 +37,7 @@ func server() {
 			return res, 0
 		},
 		// WriteMultipleRegisters will print out the received register values as string
-		WriteMultipleRegisters: func(ctx context.Context, address uint16, values []byte) (ex modbus.Exception) {
+		WriteMultipleRegisters: func(ctx cancel.Context, address uint16, values []byte) (ex modbus.Exception) {
 			fmt.Printf("server: received write multiple registers request: %v\n", string(values))
 			return 0
 		},
@@ -46,13 +46,13 @@ func server() {
 
 func client() {
 	// cancel the context when the client is done -> this will also initialize a server shutdown
-	defer cancel()
+	defer ctx.Cancel()
 	// instantiate a new modbus master from the given configuration
 	c := cfg.Client()
 	// give the server some time to start up
 	time.Sleep(1 * time.Second)
 	// attempt to connect to the server
-	if err := c.Connect(ctx); err != nil {
+	if err := c.Connect(); err != nil {
 		return
 	}
 	defer c.Disconnect()
@@ -65,7 +65,7 @@ func client() {
 		}
 		fmt.Printf("client: received response for read coils %v\n", res)
 		time.Sleep(1 * time.Second)
-		// write hello there to the server - be sure that
+		// write hello there to the server
 		if err := c.WriteMultipleRegisters(ctx, 0, []byte("hello there!")); err != nil {
 			fmt.Println(err)
 			return

@@ -1,33 +1,8 @@
 package modbus
 
 import (
-	"context"
 	"encoding/binary"
 )
-
-// mutex behaves similar to the sync.Mutex, with the following differences:
-// 	1. the mutex needs to be initialized by sending a struct{} into it
-//	2. a lock attempt can be canceled by the given context
-type mutex chan struct{}
-
-func newMutex() mutex {
-	new := make(mutex, 1)
-	new <- struct{}{}
-	return new
-}
-
-func (mu mutex) lock(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-mu:
-		return nil
-	}
-}
-
-func (mu mutex) unlock() {
-	mu <- struct{}{}
-}
 
 func boundCheck(address, quantity, limit uint16) Exception {
 	switch {
