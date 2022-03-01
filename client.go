@@ -66,6 +66,7 @@ func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte,
 	}
 
 	sig := cancel.New().Propagate(ctx)
+	defer sig.Cancel()
 
 	wait := c.listen(sig, func(adu []byte, er error) (quit bool) {
 		if er != nil {
