@@ -13,6 +13,7 @@ var cfg = modbus.Config{
 	Mode:     "tcp",
 	Kind:     "tcp",
 	Endpoint: "localhost:1337",
+	UnitID:   1,
 }
 
 var (
@@ -35,7 +36,7 @@ func TestReadCoils(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadCoils: func(ctx cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
+		ReadCoils: func(_ cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -77,7 +78,7 @@ func TestReadDiscreteInputs(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadDiscreteInputs: func(ctx cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
+		ReadDiscreteInputs: func(_ cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -119,7 +120,7 @@ func TestReadHoldingRegisters(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadHoldingRegisters: func(ctx cancel.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
+		ReadHoldingRegisters: func(_ cancel.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -161,7 +162,7 @@ func TestReadInputRegisters(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadInputRegisters: func(ctx cancel.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
+		ReadInputRegisters: func(_ cancel.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -203,7 +204,7 @@ func TestWriteSingleCoil(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteSingleCoil: func(ctx cancel.Context, address uint16, status bool) (ex modbus.Exception) {
+		WriteSingleCoil: func(_ cancel.Context, address uint16, status bool) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				if want != status {
 					t.Errorf("server received unexpected value handling function code WriteSingleCoil at address %v, got %v; wanted: %v", address, status, want)
@@ -244,7 +245,7 @@ func TestWriteSingleRegister(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteSingleRegister: func(ctx cancel.Context, address uint16, value uint16) (ex modbus.Exception) {
+		WriteSingleRegister: func(_ cancel.Context, address uint16, value uint16) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				if want != value {
 					t.Errorf("server received unexpected value handling function code WriteSingleRegister at address %v, got %v; wanted: %v", address, value, want)
@@ -285,7 +286,7 @@ func TestWriteMultipleCoils(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteMultipleCoils: func(ctx cancel.Context, address uint16, status []bool) (ex modbus.Exception) {
+		WriteMultipleCoils: func(_ cancel.Context, address uint16, status []bool) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				for i := range want {
 					if want[i] != status[i] {
@@ -328,7 +329,7 @@ func TestWriteMultipleRegisters(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteMultipleRegisters: func(ctx cancel.Context, address uint16, values []byte) (ex modbus.Exception) {
+		WriteMultipleRegisters: func(_ cancel.Context, address uint16, values []byte) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				for i := range want {
 					if want[i] != values[i] {
@@ -371,7 +372,7 @@ func TestReadWriteMultipleRegisters(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadWriteMultipleRegisters: func(ctx cancel.Context, rAddress uint16, rQuantity uint16, wAddress uint16, values []byte) (res []byte, ex modbus.Exception) {
+		ReadWriteMultipleRegisters: func(_ cancel.Context, rAddress uint16, rQuantity uint16, wAddress uint16, values []byte) (res []byte, ex modbus.Exception) {
 			if want, ok := testCases[[3]uint16{rAddress, rQuantity, wAddress}]; ok {
 				for i, v := range want[1] {
 					if v != values[i] {

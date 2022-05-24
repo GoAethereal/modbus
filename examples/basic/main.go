@@ -12,6 +12,7 @@ var cfg = modbus.Config{
 	Mode:     "tcp",
 	Kind:     "tcp",
 	Endpoint: "localhost:1337",
+	UnitID:   1,
 }
 
 var ctx = cancel.New()
@@ -29,7 +30,7 @@ func server() {
 	// start serving the function codes read coils and write multiple registers
 	s.Serve(ctx, &modbus.Mux{
 		// ReadCoils will always respond with an alternating pattern of coil states
-		ReadCoils: func(ctx cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
+		ReadCoils: func(_ cancel.Context, _, quantity uint16) (res []bool, ex modbus.Exception) {
 			res = make([]bool, quantity)
 			for i := range res {
 				res[i] = i%2 == 0
@@ -37,7 +38,7 @@ func server() {
 			return res, 0
 		},
 		// WriteMultipleRegisters will print out the received register values as string
-		WriteMultipleRegisters: func(ctx cancel.Context, address uint16, values []byte) (ex modbus.Exception) {
+		WriteMultipleRegisters: func(_ cancel.Context, _ uint16, values []byte) (ex modbus.Exception) {
 			fmt.Printf("server: received write multiple registers request: %v\n", string(values))
 			return 0
 		},
