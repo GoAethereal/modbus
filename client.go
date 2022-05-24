@@ -78,7 +78,7 @@ func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte,
 		case nil:
 			//needs check for exceptions
 			_, res, err = c.decode(req[:copy(req[:cap(req)], adu)])
-		case ErrMissmatchedTransactionId:
+		case ErrMismatchedTransactionId:
 			return false
 		default:
 			res, err = nil, e

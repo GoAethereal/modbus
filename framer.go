@@ -18,7 +18,8 @@ type framer interface {
 var _ framer = (*tcp)(nil)
 
 type tcp struct {
-	transid uint32
+	transId uint32
+	unitId  byte
 }
 
 func (s *tcp) buffer() []byte {
@@ -30,9 +31,9 @@ func (s *tcp) encode(code byte, data []byte) (adu []byte, err error) {
 		return nil, ErrDataSizeExceeded
 	}
 	adu = s.buffer()
-	binary.BigEndian.PutUint16(adu[0:], uint16(atomic.AddUint32(&s.transid, 1)))
+	binary.BigEndian.PutUint16(adu[0:], uint16(atomic.AddUint32(&s.transId, 1)))
 	binary.BigEndian.PutUint16(adu[4:], 2+uint16(len(data)))
-	adu[7] = code
+	adu[6], adu[7] = s.unitId, code
 	return adu[:8+copy(adu[8:], data)], nil
 }
 
@@ -49,11 +50,11 @@ func (s *tcp) decode(adu []byte) (code byte, data []byte, err error) {
 func (s *tcp) verify(req, res []byte) error {
 	switch {
 	case req[0] != res[0] || req[1] != res[1]:
-		return ErrMissmatchedTransactionId
+		return ErrMismatchedTransactionId
 	case req[2] != res[2] || req[3] != res[3]:
-		return ErrMissmatchedProtocolId
-	case req[6] != res[6]:
-		return ErrMissmatchedUnitId
+		return ErrMismatchedProtocolId
+	case req[6] != 0 && req[6] != res[6]:
+		return ErrMismatchedUnitId
 	}
 	return nil
 }

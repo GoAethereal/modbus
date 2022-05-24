@@ -22,6 +22,8 @@ type Config struct {
 	Kind string
 	// Endpoint used for connecting to (client) or listening on (server)
 	Endpoint string
+	// Unit identifier used
+	UnitID byte
 }
 
 // Verify validates the modbus.Options, thereby checking for invalid parameter.
@@ -46,7 +48,7 @@ func (cfg *Config) Verify() error {
 func (cfg Config) framer() framer {
 	switch cfg.Mode {
 	case "tcp":
-		return &tcp{}
+		return &tcp{unitId: cfg.UnitID}
 	}
 	return nil
 }
@@ -76,7 +78,7 @@ func (cfg Config) Server() *Server {
 func (cfg Config) dial() (connection, error) {
 	switch cfg.Kind {
 	case "tcp":
-		conn, err := (&net.Dialer{}).Dial(cfg.Kind, cfg.Endpoint)
+		conn, err := new(net.Dialer).Dial(cfg.Kind, cfg.Endpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +88,7 @@ func (cfg Config) dial() (connection, error) {
 }
 
 // listen creates a new listener on the configured endpoint.
-// If successfull a acceptor function will be returned.
+// If successful a acceptor function will be returned.
 // The function will block until a new connection is established or an error occurs.
 func (cfg Config) listen(ctx cancel.Context) (fn func() (connection, error), err error) {
 	switch cfg.Kind {
