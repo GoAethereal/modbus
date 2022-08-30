@@ -1,6 +1,7 @@
 package modbus
 
 import (
+	"log"
 	"sync"
 
 	"github.com/GoAethereal/cancel"
@@ -20,7 +21,7 @@ import (
 //
 //	log.Fatal(s.Serve(ctx,h))
 type Server struct {
-	cfg Config
+	Config
 	framer
 }
 
@@ -29,7 +30,11 @@ type Server struct {
 // h must be safe for use by multiple go routines.
 func (s *Server) Serve(ctx cancel.Context, h Handler) error {
 	var wg sync.WaitGroup
-	l, err := s.cfg.listen(ctx)
+	l, err := s.listen(ctx)
+	if err != nil {
+		return err
+	}
+	s.framer, err = s.Config.framer(ctx)
 	if err != nil {
 		return err
 	}
@@ -44,9 +49,10 @@ func (s *Server) Serve(ctx cancel.Context, h Handler) error {
 				continue
 			}
 			wg.Add(1)
-			go func(conn connection) {
+			log.Println("spin up client handler")
+			go func(con connection) {
 				defer wg.Done()
-				s.handle(ctx, conn, h)
+				s.handle(ctx, con, h)
 			}(conn)
 		}
 	}
@@ -57,7 +63,7 @@ func (s *Server) handle(ctx cancel.Context, c connection, h Handler) {
 	defer c.close()
 	var wg sync.WaitGroup
 
-	wait := c.listen(ctx, func(adu []byte, err error) (quit bool) {
+	wait := c.rx(ctx, func(adu []byte, err error) (quit bool) {
 		if err != nil {
 			return true
 		}
@@ -89,14 +95,12 @@ func (s *Server) handle(ctx cancel.Context, c connection, h Handler) {
 			}
 
 			res, _ = s.reply(code, res, adu)
-			if err := c.write(ctx, res); err != nil {
+			if err := c.tx(ctx, res); err != nil {
 				return
 			}
 		}(buf)
 		return false
 	})
-
-	c.read(ctx, s.buffer())
 	<-wait
 	wg.Wait()
 }

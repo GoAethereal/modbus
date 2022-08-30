@@ -26,7 +26,7 @@ func main() {
 
 func server() {
 	// instantiate a new modbus slave from the given configuration
-	s := cfg.Server()
+	s := modbus.Server{Config: cfg}
 	// start serving the function codes read coils and write multiple registers
 	s.Serve(ctx, &modbus.Mux{
 		// ReadCoils will always respond with an alternating pattern of coil states
@@ -49,14 +49,11 @@ func client() {
 	// cancel the context when the client is done -> this will also initialize a server shutdown
 	defer ctx.Cancel()
 	// instantiate a new modbus master from the given configuration
-	c := cfg.Client()
+	c := modbus.Client{Config: cfg}
+	defer c.Disconnect()
+
 	// give the server some time to start up
 	time.Sleep(1 * time.Second)
-	// attempt to connect to the server
-	if err := c.Connect(); err != nil {
-		return
-	}
-	defer c.Disconnect()
 	for i := 0; i < 10; i++ {
 		// request 10 coil states from the server
 		res, err := c.ReadCoils(ctx, 0, 10)

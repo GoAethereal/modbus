@@ -10,65 +10,66 @@ import (
 )
 
 type connection interface {
+	ready() bool
 	// close stops the connection.
 	// All running reads and writes are canceled.
-	close() error
-	// read continuously reads from the connection
-	// and broadcasts incoming data to all attached listeners
-	read(ctx cancel.Context, buf []byte) (err error)
-	// write sends the given adu to the connected endpoint.
-	write(ctx cancel.Context, adu []byte) (err error)
-	// listen attaches the given callback function to the connection.
+	close()
+	// tx sends the given adu to the connected endpoint.
+	tx(ctx cancel.Context, adu []byte) (err error)
+	// read attaches the given callback function to the connection.
 	// The callback will be eventually removed if the context is canceled
 	// or immediately if quit=true is returned.
-	listen(ctx cancel.Context, callback func(adu []byte, err error) (quit bool)) (done <-chan struct{})
+	rx(ctx cancel.Context, callback func(adu []byte, err error) (quit bool)) (done <-chan struct{})
 }
 
 type network struct {
-	mu   sync.Mutex
-	l    list.List
-	conn net.Conn
+	mtx sync.Mutex
+	ctx cancel.Signal
+	con net.Conn
+	buf []byte
+	l   list.List
 }
 
-var _ connection = (&network{})
-
-type receiver struct {
-	done     chan struct{}
-	callback func(adu []byte, err error) (quit bool)
-}
-
-func (c *network) close() error {
-	return c.conn.Close()
-}
-
-func (c *network) read(ctx cancel.Context, buf []byte) (err error) {
-	c.conn.SetReadDeadline(time.Time{})
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		select {
-		case <-done:
-		case <-ctx.Done():
-			c.conn.SetReadDeadline(time.Unix(1, 0))
-		}
-	}()
-	var n int
-	for {
-		n, err = c.conn.Read(buf)
-		c.broadcast(ctx, buf[:n], err)
-		if err != nil {
-			close(done)
-			wg.Wait()
-			return err
-		}
+func (c *network) ready() bool {
+	select {
+	case <-c.ctx.Done():
+		return false
+	default:
+		return true
 	}
 }
 
-func (c *network) broadcast(ctx cancel.Context, adu []byte, err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *network) close() {
+	c.ctx.Cancel()
+}
+
+func (c *network) init() (connection, error) {
+	go func() {
+		c.con.SetReadDeadline(time.Time{})
+		var wg sync.WaitGroup
+		wg.Add(1)
+		defer wg.Wait()
+		defer c.ctx.Cancel()
+		go func() {
+			defer wg.Done()
+			<-c.ctx.Done()
+			c.con.SetReadDeadline(time.Unix(1, 0))
+		}()
+		var (
+			n   int
+			err error
+		)
+		for err == nil {
+			n, err = c.con.Read(c.buf)
+			c.broadcast(c.buf[:n], err)
+		}
+	}()
+	return c, nil
+}
+
+func (c *network) broadcast(adu []byte, err error) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	var n *list.Element
 	for e := c.l.Front(); e != nil; e = n {
 		n = e.Next()
@@ -80,11 +81,16 @@ func (c *network) broadcast(ctx cancel.Context, adu []byte, err error) {
 	}
 }
 
-func (c *network) write(ctx cancel.Context, adu []byte) (err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+type receiver struct {
+	done     chan struct{}
+	callback func(adu []byte, err error) (quit bool)
+}
+
+func (c *network) tx(ctx cancel.Context, adu []byte) (err error) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	var wg sync.WaitGroup
-	c.conn.SetWriteDeadline(time.Time{})
+	c.con.SetWriteDeadline(time.Time{})
 	done := make(chan struct{})
 	wg.Add(1)
 	go func() {
@@ -92,26 +98,26 @@ func (c *network) write(ctx cancel.Context, adu []byte) (err error) {
 		select {
 		case <-done:
 		case <-ctx.Done():
-			c.conn.SetWriteDeadline(time.Unix(1, 0))
+			c.con.SetWriteDeadline(time.Unix(1, 0))
 		}
 	}()
-	_, err = c.conn.Write(adu)
+	_, err = c.con.Write(adu)
 	close(done)
 	wg.Wait()
 	return err
 }
 
-func (c *network) listen(ctx cancel.Context, callback func(adu []byte, err error) (quit bool)) (done <-chan struct{}) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *network) rx(ctx cancel.Context, callback func(adu []byte, err error) (quit bool)) (done <-chan struct{}) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	r := receiver{done: make(chan struct{}), callback: callback}
 	e := c.l.PushFront(r)
 	go func() {
 		select {
 		case <-done:
 		case <-ctx.Done():
-			c.mu.Lock()
-			defer c.mu.Unlock()
+			c.mtx.Lock()
+			defer c.mtx.Unlock()
 			select {
 			case <-done:
 			default:
