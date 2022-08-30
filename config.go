@@ -65,7 +65,7 @@ func (cfg Config) connection(ctx cancel.Context) (connection, error) {
 			return nil, err
 		}
 
-		return (&network{con: con, buf: make([]byte, 256)}).init()
+		return (&network{con: con, buf: make([]byte, 260)}).init()
 	}
 	return nil, ErrInvalidParameter
 }
