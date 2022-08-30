@@ -18,8 +18,8 @@ var cfg = modbus.Config{
 
 var (
 	mu sync.Mutex
-	s  = cfg.Server()
-	c  = cfg.Client()
+	s  = (&modbus.Server{Config: cfg})
+	c  = (&modbus.Client{Config: cfg})
 )
 
 func TestReadCoils(t *testing.T) {
@@ -45,10 +45,6 @@ func TestReadCoils(t *testing.T) {
 	})
 
 	time.Sleep(250 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for aq, want := range testCases {
@@ -87,10 +83,6 @@ func TestReadDiscreteInputs(t *testing.T) {
 	})
 
 	time.Sleep(250 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for aq, want := range testCases {
@@ -129,10 +121,6 @@ func TestReadHoldingRegisters(t *testing.T) {
 	})
 
 	time.Sleep(250 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for aq, want := range testCases {
@@ -171,10 +159,6 @@ func TestReadInputRegisters(t *testing.T) {
 	})
 
 	time.Sleep(250 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for aq, want := range testCases {
@@ -218,10 +202,6 @@ func TestWriteSingleCoil(t *testing.T) {
 	})
 
 	time.Sleep(250 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for a, want := range testCases {
@@ -259,10 +239,6 @@ func TestWriteSingleRegister(t *testing.T) {
 	})
 
 	time.Sleep(250 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for a, want := range testCases {
@@ -302,10 +278,6 @@ func TestWriteMultipleCoils(t *testing.T) {
 	})
 
 	time.Sleep(1 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client: connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for a, want := range testCases {
@@ -345,10 +317,6 @@ func TestWriteMultipleRegisters(t *testing.T) {
 	})
 
 	time.Sleep(1 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client: connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for a, want := range testCases {
@@ -388,10 +356,6 @@ func TestReadWriteMultipleRegisters(t *testing.T) {
 	})
 
 	time.Sleep(1 * time.Millisecond)
-
-	if err := c.Connect(); err != nil {
-		t.Fatalf("client: connection refused: %v", err)
-	}
 	defer c.Disconnect()
 
 	for dst, want := range testCases {

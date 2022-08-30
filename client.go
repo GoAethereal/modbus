@@ -3,8 +3,8 @@ package modbus
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/GoAethereal/cancel"
 )
@@ -12,46 +12,54 @@ import (
 // Client is the go implementation of a modbus master.
 // Generally the intended use is as follows:
 //
-//	cfg := modbus.Config{
+//	c := modbus.Client{Config: modbus.Config{
 //		Mode:     "tcp",
 //		Kind:     "tcp",
 //		Endpoint: "localhost:502",
-//	}
-//	c := cfg.Client()
-//
-//	if err := c.Connect(); err != nil {
-//		log.Fatal(err)
-//	}
+//	}}
 //	defer c.Disconnect()
 //
 //	//use the client`s read/write methods like c.ReadCoils, etc
 type Client struct {
-	cfg Config
-	framer
-	connection
+	Config
+	mtx sync.Mutex
+	c   connection
+	f   framer
 }
 
-// Connect initializes the underlying connection and payload mode.
-// If all given options are valid the endpoint will be dialed in.
-func (c *Client) Connect() (err error) {
-	if c.connection != nil {
-		return errors.New("modbus: already connected")
+func (c *Client) Ready() bool {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if c.c != nil {
+		return c.c.ready()
 	}
-	if c.connection, err = c.cfg.dial(); err != nil {
-		return err
-	}
-	go c.read(context.Background(), c.buffer())
-	return nil
+	return false
 }
 
 // Disconnect shuts down the connection.
 // All running requests will be canceled as a result.
-func (c *Client) Disconnect() (err error) {
-	if c.connection != nil {
-		err = c.close()
-		c.connection = nil
+func (c *Client) Disconnect() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if c.c != nil {
+		c.c.close()
 	}
-	return err
+}
+
+func (c *Client) init(ctx cancel.Context) (_ connection, _ framer, err error) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if c.c == nil || !c.c.ready() {
+		if c.c, err = c.Config.connection(ctx); err != nil {
+			return nil, nil, err
+		}
+	}
+	if c.f == nil {
+		if c.f, err = c.Config.framer(ctx); err != nil {
+			return nil, nil, err
+		}
+	}
+	return c.c, c.f, nil
 }
 
 // Request encodes the request into a valid application data unit and sends it to the clients endpoint.
@@ -61,23 +69,29 @@ func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte,
 	if code == 0 || code >= 0x80 {
 		return nil, IllegalFunction
 	}
-	if req, err = c.encode(code, req); err != nil {
+
+	con, f, err := c.init(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if req, err = f.encode(code, req); err != nil {
 		return nil, err
 	}
 
 	sig := cancel.New().Propagate(ctx)
 	defer sig.Cancel()
 
-	wait := c.listen(sig, func(adu []byte, er error) (quit bool) {
+	wait := con.rx(sig, func(adu []byte, er error) (quit bool) {
 		if er != nil {
 			res, err = nil, er
 			return true
 		}
-		e := c.verify(req, adu)
+		e := f.verify(req, adu)
 		switch e {
 		case nil:
 			//needs check for exceptions
-			_, res, err = c.decode(req[:copy(req[:cap(req)], adu)])
+			_, res, err = f.decode(req[:copy(req[:cap(req)], adu)])
 		case ErrMismatchedTransactionId:
 			return false
 		default:
@@ -86,7 +100,7 @@ func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte,
 		return true
 	})
 
-	if err := c.write(ctx, req); err != nil {
+	if err := con.tx(ctx, req); err != nil {
 		sig.Cancel()
 		<-wait
 		return nil, err

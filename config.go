@@ -1,6 +1,7 @@
 package modbus
 
 import (
+	"log"
 	"net"
 
 	"github.com/GoAethereal/cancel"
@@ -45,44 +46,26 @@ func (cfg *Config) Verify() error {
 }
 
 // framer creates a new modbus framer from the given configuration.
-func (cfg Config) framer() framer {
+func (cfg Config) framer(_ cancel.Context) (framer, error) {
 	switch cfg.Mode {
 	case "tcp":
-		return &tcp{unitId: cfg.UnitID}
+		return &tcp{unitId: cfg.UnitID}, nil
 	}
-	return nil
+	return nil, ErrInvalidParameter
 }
 
-// Client instantiates a new modbus master instance from the given configuration.
-// If the configuration is malformed nil is returned instead.
-// To check the validity of the config use config.Verify()
-func (cfg Config) Client() *Client {
-	if err := cfg.Verify(); err != nil {
-		return nil
-	}
-	return &Client{cfg: cfg, framer: cfg.framer()}
-}
-
-// Server instantiates a new modbus slave instance from the given configuration.
-// If the configuration is malformed nil is returned instead.
-// To check the validity of the config use config.Verify()
-func (cfg Config) Server() *Server {
-	if err := cfg.Verify(); err != nil {
-		return nil
-	}
-	return &Server{cfg: cfg, framer: cfg.framer()}
-}
-
-// dial attempts to dial in the configured endpoint.
-// On success it will return the connection, otherwise an error.
-func (cfg Config) dial() (connection, error) {
+func (cfg Config) connection(ctx cancel.Context) (connection, error) {
 	switch cfg.Kind {
 	case "tcp":
-		conn, err := new(net.Dialer).Dial(cfg.Kind, cfg.Endpoint)
+		ctx, cancel := cancel.Promote(ctx)
+		defer cancel()
+		con, err := new(net.Dialer).DialContext(ctx, cfg.Kind, cfg.Endpoint)
 		if err != nil {
+			log.Println("connection failed")
 			return nil, err
 		}
-		return &network{conn: conn}, nil
+
+		return (&network{con: con, buf: make([]byte, 256)}).init()
 	}
 	return nil, ErrInvalidParameter
 }
@@ -103,8 +86,11 @@ func (cfg Config) listen(ctx cancel.Context) (fn func() (connection, error), err
 			l.Close()
 		}()
 		fn = func() (connection, error) {
-			conn, err := l.Accept()
-			return &network{conn: conn}, err
+			con, err := l.Accept()
+			if err != nil {
+				return nil, err
+			}
+			return (&network{con: con, buf: make([]byte, 256)}).init()
 		}
 
 	}
