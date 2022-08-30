@@ -1,7 +1,6 @@
 package modbus
 
 import (
-	"log"
 	"net"
 
 	"github.com/GoAethereal/cancel"
@@ -61,10 +60,8 @@ func (cfg Config) connection(ctx cancel.Context) (connection, error) {
 		defer cancel()
 		con, err := new(net.Dialer).DialContext(ctx, cfg.Kind, cfg.Endpoint)
 		if err != nil {
-			log.Println("connection failed")
 			return nil, err
 		}
-
 		return (&network{con: con, buf: make([]byte, 260)}).init()
 	}
 	return nil, ErrInvalidParameter
