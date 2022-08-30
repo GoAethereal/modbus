@@ -1,7 +1,6 @@
 package modbus
 
 import (
-	"log"
 	"sync"
 
 	"github.com/GoAethereal/cancel"
@@ -49,7 +48,6 @@ func (s *Server) Serve(ctx cancel.Context, h Handler) error {
 				continue
 			}
 			wg.Add(1)
-			log.Println("spin up client handler")
 			go func(con connection) {
 				defer wg.Done()
 				s.handle(ctx, con, h)
