@@ -1,4 +1,2 @@
-github.com/GoAethereal/cancel v0.0.1 h1:8mnuM/kOn2ke2g7clcR/1dxe0j913sPhcLZMC1DY2Ls=
-github.com/GoAethereal/cancel v0.0.1/go.mod h1:A7xd/72lvTnxI5yEu/LPRNI3NxdfcurCxJzaQHI8fY0=
-github.com/GoAethereal/cancel v0.0.2 h1:6PxQ/YqYofqdj46di014aIInf/RyfHnDBXlVp9kP8So=
-github.com/GoAethereal/cancel v0.0.2/go.mod h1:A7xd/72lvTnxI5yEu/LPRNI3NxdfcurCxJzaQHI8fY0=
+github.com/GoAethereal/stream v0.0.16 h1:vzHWsb8DbWXRJB4QqIVq13yQLHpuuYoFg1biNCNokV8=
+github.com/GoAethereal/stream v0.0.16/go.mod h1:fAOzzwx+GM6FeiEEOjsHxTXgXy5vZFar5LAUgkcYfc0=
