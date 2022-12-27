@@ -65,7 +65,7 @@ func (c *Client) init(ctx cancel.Context) (_ connection, _ framer, err error) {
 // Request encodes the request into a valid application data unit and sends it to the clients endpoint.
 // Only function codes below 0x80 are accepted.
 // The method will return a nil response and an error if something went wrong.
-func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte, err error) {
+func (c *Client) Request(ctx cancel.Context, uid, code byte, req []byte) (res []byte, err error) {
 	if code == 0 || code >= 0x80 {
 		return nil, IllegalFunction
 	}
@@ -75,7 +75,7 @@ func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte,
 		return nil, err
 	}
 
-	if req, err = f.encode(code, req); err != nil {
+	if req, err = f.encode(uid, code, req); err != nil {
 		return nil, err
 	}
 
@@ -91,7 +91,7 @@ func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte,
 		switch e {
 		case nil:
 			//needs check for exceptions
-			_, res, err = f.decode(req[:copy(req[:cap(req)], adu)])
+			_, _, res, err = f.decode(req[:copy(req[:cap(req)], adu)])
 		case ErrMismatchedTransactionId:
 			return false
 		default:
@@ -118,11 +118,11 @@ func (c *Client) Request(ctx cancel.Context, code byte, req []byte) (res []byte,
 
 // ReadCoils requests 1 to 2000 (quantity) contiguous coil states, starting from address.
 // On success returns a bool slice with size of quantity where false=OFF and true=ON.
-func (c *Client) ReadCoils(ctx cancel.Context, address, quantity uint16) (status []bool, err error) {
+func (c *Client) ReadCoils(ctx cancel.Context, uid byte, address, quantity uint16) (status []bool, err error) {
 	if ex := boundCheck(address, quantity, 2000); ex != 0 {
 		return nil, ex
 	}
-	res, err := c.Request(ctx, 0x01, put(4, address, quantity))
+	res, err := c.Request(ctx, uid, 0x01, put(4, address, quantity))
 	switch {
 	case err != nil:
 		return nil, err
@@ -134,11 +134,11 @@ func (c *Client) ReadCoils(ctx cancel.Context, address, quantity uint16) (status
 
 // ReadDiscreteInputs requests 1 to 2000 (quantity) contiguous discrete inputs, starting from address.
 // On success returns a bool slice with size of quantity where false=OFF and true=ON.
-func (c *Client) ReadDiscreteInputs(ctx cancel.Context, address, quantity uint16) (status []bool, err error) {
+func (c *Client) ReadDiscreteInputs(ctx cancel.Context, uid byte, address, quantity uint16) (status []bool, err error) {
 	if ex := boundCheck(address, quantity, 2000); ex != 0 {
 		return nil, ex
 	}
-	res, err := c.Request(ctx, 0x02, put(4, address, quantity))
+	res, err := c.Request(ctx, uid, 0x02, put(4, address, quantity))
 	switch {
 	case err != nil:
 		return nil, err
@@ -150,11 +150,11 @@ func (c *Client) ReadDiscreteInputs(ctx cancel.Context, address, quantity uint16
 
 // ReadHoldingRegisters reads from 1 to 125 (quantity) contiguous holding registers starting at address.
 // On success returns a byte slice with the response data which is 2*quantity in length.
-func (c *Client) ReadHoldingRegisters(ctx cancel.Context, address, quantity uint16) (values []byte, err error) {
+func (c *Client) ReadHoldingRegisters(ctx cancel.Context, uid byte, address, quantity uint16) (values []byte, err error) {
 	if ex := boundCheck(address, quantity, 125); ex != 0 {
 		return nil, ex
 	}
-	res, err := c.Request(ctx, 0x03, put(4, address, quantity))
+	res, err := c.Request(ctx, uid, 0x03, put(4, address, quantity))
 	switch {
 	case err != nil:
 		return nil, err
@@ -166,11 +166,11 @@ func (c *Client) ReadHoldingRegisters(ctx cancel.Context, address, quantity uint
 
 // ReadInputRegisters reads from 1 to 125 (quantity) contiguous input registers starting at address.
 // On success returns a byte slice with the response data which is 2*quantity in length.
-func (c *Client) ReadInputRegisters(ctx cancel.Context, address, quantity uint16) (values []byte, err error) {
+func (c *Client) ReadInputRegisters(ctx cancel.Context, uid byte, address, quantity uint16) (values []byte, err error) {
 	if ex := boundCheck(address, quantity, 125); ex != 0 {
 		return nil, ex
 	}
-	res, err := c.Request(ctx, 0x04, put(4, address, quantity))
+	res, err := c.Request(ctx, uid, 0x04, put(4, address, quantity))
 	switch {
 	case err != nil:
 		return nil, err
@@ -181,8 +181,8 @@ func (c *Client) ReadInputRegisters(ctx cancel.Context, address, quantity uint16
 }
 
 // WriteSingleCoil sets the output of the coil at address to ON=true or OFF=false.
-func (c *Client) WriteSingleCoil(ctx cancel.Context, address uint16, status bool) (err error) {
-	res, err := c.Request(ctx, 0x05, put(4, address, status))
+func (c *Client) WriteSingleCoil(ctx cancel.Context, uid byte, address uint16, status bool) (err error) {
+	res, err := c.Request(ctx, uid, 0x05, put(4, address, status))
 	switch {
 	case err != nil:
 		return err
@@ -193,8 +193,8 @@ func (c *Client) WriteSingleCoil(ctx cancel.Context, address uint16, status bool
 }
 
 // WriteSingleRegister writes value to a single holding register at address.
-func (c *Client) WriteSingleRegister(ctx cancel.Context, address, value uint16) (err error) {
-	res, err := c.Request(ctx, 0x06, put(4, address, value))
+func (c *Client) WriteSingleRegister(ctx cancel.Context, uid byte, address, value uint16) (err error) {
+	res, err := c.Request(ctx, uid, 0x06, put(4, address, value))
 	switch {
 	case err != nil:
 		return err
@@ -206,12 +206,12 @@ func (c *Client) WriteSingleRegister(ctx cancel.Context, address, value uint16) 
 
 // WriteMultipleCoils sets the state of all coils starting at address to the value of status, where false=OFF and true=ON.
 // Status needs to be of length 1 to 1968.
-func (c *Client) WriteMultipleCoils(ctx cancel.Context, address uint16, status ...bool) (err error) {
+func (c *Client) WriteMultipleCoils(ctx cancel.Context, uid byte, address uint16, status ...bool) (err error) {
 	quantity := uint16(len(status))
 	if ex := boundCheck(address, quantity, 1968); ex != 0 {
 		return ex
 	}
-	res, err := c.Request(ctx, 0x0F, put(5+byteCount(quantity), address, quantity, byte(byteCount(quantity)), status))
+	res, err := c.Request(ctx, uid, 0x0F, put(5+byteCount(quantity), address, quantity, byte(byteCount(quantity)), status))
 	switch {
 	case err != nil:
 		return err
@@ -223,7 +223,7 @@ func (c *Client) WriteMultipleCoils(ctx cancel.Context, address uint16, status .
 
 // WriteMultipleRegisters writes the values to the holding registers at address.
 // Values must be a multiple of 2 and in the range of 2 to 246
-func (c *Client) WriteMultipleRegisters(ctx cancel.Context, address uint16, values []byte) (err error) {
+func (c *Client) WriteMultipleRegisters(ctx cancel.Context, uid byte, address uint16, values []byte) (err error) {
 	l := len(values)
 	if l%2 != 0 {
 		return IllegalDataValue
@@ -232,7 +232,7 @@ func (c *Client) WriteMultipleRegisters(ctx cancel.Context, address uint16, valu
 	if ex := boundCheck(address, quantity, 246); ex != 0 {
 		return ex
 	}
-	res, err := c.Request(ctx, 0x10, put(5+l, address, quantity, byte(l), values))
+	res, err := c.Request(ctx, uid, 0x10, put(5+l, address, quantity, byte(l), values))
 	switch {
 	case err != nil:
 		return err
@@ -244,7 +244,7 @@ func (c *Client) WriteMultipleRegisters(ctx cancel.Context, address uint16, valu
 
 // ReadWriteMultipleRegisters reads a contiguous block of holding registers (rQuantity) from rAddress.
 // Also the values are written at wAddress.
-func (c *Client) ReadWriteMultipleRegisters(ctx cancel.Context, rAddress, rQuantity, wAddress uint16, values []byte) (res []byte, err error) {
+func (c *Client) ReadWriteMultipleRegisters(ctx cancel.Context, uid byte, rAddress, rQuantity, wAddress uint16, values []byte) (res []byte, err error) {
 	l := len(values)
 	if l%2 != 0 {
 		return nil, IllegalDataValue
@@ -256,7 +256,7 @@ func (c *Client) ReadWriteMultipleRegisters(ctx cancel.Context, rAddress, rQuant
 	if ex := boundCheck(wAddress, wQuantity, 121); ex != 0 {
 		return nil, ex
 	}
-	res, err = c.Request(ctx, 0x17, put(9+l, rAddress, rQuantity, wAddress, wQuantity, byte(l), values))
+	res, err = c.Request(ctx, uid, 0x17, put(9+l, rAddress, rQuantity, wAddress, wQuantity, byte(l), values))
 	switch {
 	case err != nil:
 		return nil, err

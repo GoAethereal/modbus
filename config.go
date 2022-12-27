@@ -22,8 +22,6 @@ type Config struct {
 	Kind string
 	// Endpoint used for connecting to (client) or listening on (server)
 	Endpoint string
-	// Unit identifier used
-	UnitID byte
 }
 
 // Verify validates the modbus.Options, thereby checking for invalid parameter.
@@ -48,7 +46,7 @@ func (cfg *Config) Verify() error {
 func (cfg Config) framer(_ cancel.Context) (framer, error) {
 	switch cfg.Mode {
 	case "tcp":
-		return &tcp{unitId: cfg.UnitID}, nil
+		return &tcp{}, nil
 	}
 	return nil, ErrInvalidParameter
 }

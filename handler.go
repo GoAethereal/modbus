@@ -9,7 +9,7 @@ import (
 // Handler is firstly and foremost used by the modbus.Server.
 // The Handle method describes how incoming messages are managed.
 type Handler interface {
-	Handle(ctx cancel.Context, code byte, req []byte) (res []byte, ex Exception)
+	Handle(ctx cancel.Context, uid, code byte, req []byte) (res []byte, ex Exception)
 }
 
 var _ Handler = (*Mux)(nil)
@@ -20,52 +20,52 @@ var _ Handler = (*Mux)(nil)
 // In case of an unknown function code the Fallback function, if set, will be executed.
 // All given functions must be safe for use by multiple go routines.
 type Mux struct {
-	Fallback                   func(ctx cancel.Context, code byte, req []byte) (res []byte, ex Exception)
-	ReadCoils                  func(ctx cancel.Context, address, quantity uint16) (res []bool, ex Exception)
-	ReadDiscreteInputs         func(ctx cancel.Context, address, quantity uint16) (res []bool, ex Exception)
-	ReadHoldingRegisters       func(ctx cancel.Context, address, quantity uint16) (res []byte, ex Exception)
-	ReadInputRegisters         func(ctx cancel.Context, address, quantity uint16) (res []byte, ex Exception)
-	WriteSingleCoil            func(ctx cancel.Context, address uint16, status bool) (ex Exception)
-	WriteSingleRegister        func(ctx cancel.Context, address, value uint16) (ex Exception)
-	WriteMultipleCoils         func(ctx cancel.Context, address uint16, status []bool) (ex Exception)
-	WriteMultipleRegisters     func(ctx cancel.Context, address uint16, values []byte) (ex Exception)
-	ReadWriteMultipleRegisters func(ctx cancel.Context, rAddress, rQuantity, wAddress uint16, values []byte) (res []byte, ex Exception)
+	Fallback                   func(ctx cancel.Context, uid, code byte, req []byte) (res []byte, ex Exception)
+	ReadCoils                  func(ctx cancel.Context, uid byte, address, quantity uint16) (res []bool, ex Exception)
+	ReadDiscreteInputs         func(ctx cancel.Context, uid byte, address, quantity uint16) (res []bool, ex Exception)
+	ReadHoldingRegisters       func(ctx cancel.Context, uid byte, address, quantity uint16) (res []byte, ex Exception)
+	ReadInputRegisters         func(ctx cancel.Context, uid byte, address, quantity uint16) (res []byte, ex Exception)
+	WriteSingleCoil            func(ctx cancel.Context, uid byte, address uint16, status bool) (ex Exception)
+	WriteSingleRegister        func(ctx cancel.Context, uid byte, address, value uint16) (ex Exception)
+	WriteMultipleCoils         func(ctx cancel.Context, uid byte, address uint16, status []bool) (ex Exception)
+	WriteMultipleRegisters     func(ctx cancel.Context, uid byte, address uint16, values []byte) (ex Exception)
+	ReadWriteMultipleRegisters func(ctx cancel.Context, uid byte, rAddress, rQuantity, wAddress uint16, values []byte) (res []byte, ex Exception)
 }
 
 // Handle dispatches incoming requests depending on their function code to the correlating callbacks
 // as defined inside the Mux.
-func (h *Mux) Handle(ctx cancel.Context, code byte, req []byte) (res []byte, ex Exception) {
+func (h *Mux) Handle(ctx cancel.Context, uid byte, code byte, req []byte) (res []byte, ex Exception) {
 	switch code {
 	case 0x01:
-		return h.readCoils(ctx, req)
+		return h.readCoils(ctx, uid, req)
 	case 0x02:
-		return h.readDiscreteInputs(ctx, req)
+		return h.readDiscreteInputs(ctx, uid, req)
 	case 0x03:
-		return h.readHoldingRegisters(ctx, req)
+		return h.readHoldingRegisters(ctx, uid, req)
 	case 0x04:
-		return h.readInputRegisters(ctx, req)
+		return h.readInputRegisters(ctx, uid, req)
 	case 0x05:
-		return h.writeSingleCoil(ctx, req)
+		return h.writeSingleCoil(ctx, uid, req)
 	case 0x06:
-		return h.writeSingleRegister(ctx, req)
+		return h.writeSingleRegister(ctx, uid, req)
 	case 0x0F:
-		return h.writeMultipleCoils(ctx, req)
+		return h.writeMultipleCoils(ctx, uid, req)
 	case 0x10:
-		return h.writeMultipleRegisters(ctx, req)
+		return h.writeMultipleRegisters(ctx, uid, req)
 	case 0x17:
-		return h.readWriteMultipleRegisters(ctx, req)
+		return h.readWriteMultipleRegisters(ctx, uid, req)
 	}
-	return h.fallback(ctx, code, req)
+	return h.fallback(ctx, uid, code, req)
 }
 
-func (h *Mux) fallback(ctx cancel.Context, code byte, req []byte) (res []byte, ex Exception) {
+func (h *Mux) fallback(ctx cancel.Context, uid, code byte, req []byte) (res []byte, ex Exception) {
 	if h.Fallback == nil {
 		return nil, IllegalFunction
 	}
-	return h.Fallback(ctx, code, req)
+	return h.Fallback(ctx, uid, code, req)
 }
 
-func (h *Mux) readCoils(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) readCoils(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadCoils == nil:
 		return nil, IllegalFunction
@@ -77,7 +77,7 @@ func (h *Mux) readCoils(ctx cancel.Context, req []byte) (res []byte, ex Exceptio
 	if ex := boundCheck(address, quantity, 2000); ex != 0 {
 		return nil, ex
 	}
-	status, ex := h.ReadCoils(ctx, address, quantity)
+	status, ex := h.ReadCoils(ctx, uid, address, quantity)
 	switch {
 	case ex != 0:
 		return nil, ex
@@ -87,7 +87,7 @@ func (h *Mux) readCoils(ctx cancel.Context, req []byte) (res []byte, ex Exceptio
 	return put(1+int(byteCount(quantity)), byte(byteCount(quantity)), status), 0
 }
 
-func (h *Mux) readDiscreteInputs(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) readDiscreteInputs(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadDiscreteInputs == nil:
 		return nil, IllegalFunction
@@ -99,7 +99,7 @@ func (h *Mux) readDiscreteInputs(ctx cancel.Context, req []byte) (res []byte, ex
 	if ex := boundCheck(address, quantity, 2000); ex != 0 {
 		return nil, ex
 	}
-	status, ex := h.ReadDiscreteInputs(ctx, address, quantity)
+	status, ex := h.ReadDiscreteInputs(ctx, uid, address, quantity)
 	switch {
 	case ex != 0:
 		return nil, ex
@@ -109,7 +109,7 @@ func (h *Mux) readDiscreteInputs(ctx cancel.Context, req []byte) (res []byte, ex
 	return put(1+int(byteCount(quantity)), byte(byteCount(quantity)), status), 0
 }
 
-func (h *Mux) readHoldingRegisters(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) readHoldingRegisters(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadHoldingRegisters == nil:
 		return nil, IllegalFunction
@@ -121,7 +121,7 @@ func (h *Mux) readHoldingRegisters(ctx cancel.Context, req []byte) (res []byte, 
 	if ex := boundCheck(address, quantity, 125); ex != 0 {
 		return nil, ex
 	}
-	values, ex := h.ReadHoldingRegisters(ctx, address, quantity)
+	values, ex := h.ReadHoldingRegisters(ctx, uid, address, quantity)
 	switch {
 	case ex != 0:
 		return nil, ex
@@ -131,7 +131,7 @@ func (h *Mux) readHoldingRegisters(ctx cancel.Context, req []byte) (res []byte, 
 	return put(1+int(quantity)*2, byte(quantity*2), values), 0
 }
 
-func (h *Mux) readInputRegisters(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) readInputRegisters(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadInputRegisters == nil:
 		return nil, IllegalFunction
@@ -143,7 +143,7 @@ func (h *Mux) readInputRegisters(ctx cancel.Context, req []byte) (res []byte, ex
 	if ex := boundCheck(address, quantity, 125); ex != 0 {
 		return nil, ex
 	}
-	values, ex := h.ReadInputRegisters(ctx, address, quantity)
+	values, ex := h.ReadInputRegisters(ctx, uid, address, quantity)
 	switch {
 	case ex != 0:
 		return nil, ex
@@ -153,7 +153,7 @@ func (h *Mux) readInputRegisters(ctx cancel.Context, req []byte) (res []byte, ex
 	return put(1+int(quantity)*2, byte(quantity*2), values), 0
 }
 
-func (h *Mux) writeSingleCoil(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) writeSingleCoil(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.WriteSingleCoil == nil:
 		return nil, IllegalFunction
@@ -169,13 +169,13 @@ func (h *Mux) writeSingleCoil(ctx cancel.Context, req []byte) (res []byte, ex Ex
 	default:
 		return nil, IllegalDataValue
 	}
-	if ex = h.WriteSingleCoil(ctx, address, status); ex != 0 {
+	if ex = h.WriteSingleCoil(ctx, uid, address, status); ex != 0 {
 		return nil, ex
 	}
 	return req, 0
 }
 
-func (h *Mux) writeSingleRegister(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) writeSingleRegister(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.WriteSingleRegister == nil:
 		return nil, IllegalFunction
@@ -184,13 +184,13 @@ func (h *Mux) writeSingleRegister(ctx cancel.Context, req []byte) (res []byte, e
 	}
 	address := binary.BigEndian.Uint16(req[0:])
 	value := binary.BigEndian.Uint16(req[2:])
-	if ex = h.WriteSingleRegister(ctx, address, value); ex != 0 {
+	if ex = h.WriteSingleRegister(ctx, uid, address, value); ex != 0 {
 		return nil, ex
 	}
 	return req, 0
 }
 
-func (h *Mux) writeMultipleCoils(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) writeMultipleCoils(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.WriteMultipleCoils == nil:
 		return nil, IllegalFunction
@@ -205,13 +205,13 @@ func (h *Mux) writeMultipleCoils(ctx cancel.Context, req []byte) (res []byte, ex
 	if ex := boundCheck(address, quantity, 1968); ex != 0 {
 		return nil, ex
 	}
-	if ex = h.WriteMultipleCoils(ctx, address, bytesToBools(quantity, req[5:])); ex != 0 {
+	if ex = h.WriteMultipleCoils(ctx, uid, address, bytesToBools(quantity, req[5:])); ex != 0 {
 		return nil, ex
 	}
 	return req[:4], 0
 }
 
-func (h *Mux) writeMultipleRegisters(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) writeMultipleRegisters(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.WriteMultipleRegisters == nil:
 		return nil, IllegalFunction
@@ -226,13 +226,13 @@ func (h *Mux) writeMultipleRegisters(ctx cancel.Context, req []byte) (res []byte
 	if ex := boundCheck(address, quantity, 123); ex != 0 {
 		return nil, ex
 	}
-	if ex = h.WriteMultipleRegisters(ctx, address, req[5:]); ex != 0 {
+	if ex = h.WriteMultipleRegisters(ctx, uid, address, req[5:]); ex != 0 {
 		return nil, ex
 	}
 	return req[:4], 0
 }
 
-func (h *Mux) readWriteMultipleRegisters(ctx cancel.Context, req []byte) (res []byte, ex Exception) {
+func (h *Mux) readWriteMultipleRegisters(ctx cancel.Context, uid byte, req []byte) (res []byte, ex Exception) {
 	switch {
 	case h.ReadWriteMultipleRegisters == nil:
 		return nil, IllegalFunction
@@ -252,7 +252,7 @@ func (h *Mux) readWriteMultipleRegisters(ctx cancel.Context, req []byte) (res []
 	if ex := boundCheck(wAddress, wQuantity, 121); ex != 0 {
 		return nil, ex
 	}
-	res, ex = h.ReadWriteMultipleRegisters(ctx, rAddress, rQuantity, wAddress, req[9:])
+	res, ex = h.ReadWriteMultipleRegisters(ctx, uid, rAddress, rQuantity, wAddress, req[9:])
 	switch {
 	case ex != 0:
 		return nil, ex
