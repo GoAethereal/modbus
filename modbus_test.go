@@ -13,7 +13,6 @@ var cfg = modbus.Config{
 	Mode:     "tcp",
 	Kind:     "tcp",
 	Endpoint: "localhost:1337",
-	UnitID:   1,
 }
 
 var (
@@ -36,7 +35,7 @@ func TestReadCoils(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadCoils: func(_ cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
+		ReadCoils: func(_ cancel.Context, _ byte, address, quantity uint16) (res []bool, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -48,7 +47,7 @@ func TestReadCoils(t *testing.T) {
 	defer c.Disconnect()
 
 	for aq, want := range testCases {
-		res, err := c.ReadCoils(ctx, aq[0], aq[1])
+		res, err := c.ReadCoils(ctx, 1, aq[0], aq[1])
 		if err != nil {
 			t.Fatalf("read coils failed: %v", err)
 		}
@@ -74,7 +73,7 @@ func TestReadDiscreteInputs(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadDiscreteInputs: func(_ cancel.Context, address, quantity uint16) (res []bool, ex modbus.Exception) {
+		ReadDiscreteInputs: func(_ cancel.Context, _ byte, address, quantity uint16) (res []bool, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -86,7 +85,7 @@ func TestReadDiscreteInputs(t *testing.T) {
 	defer c.Disconnect()
 
 	for aq, want := range testCases {
-		res, err := c.ReadDiscreteInputs(ctx, aq[0], aq[1])
+		res, err := c.ReadDiscreteInputs(ctx, 1, aq[0], aq[1])
 		if err != nil {
 			t.Fatalf("read discrete inputs failed: %v", err)
 		}
@@ -112,7 +111,7 @@ func TestReadHoldingRegisters(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadHoldingRegisters: func(_ cancel.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
+		ReadHoldingRegisters: func(_ cancel.Context, _ byte, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -124,7 +123,7 @@ func TestReadHoldingRegisters(t *testing.T) {
 	defer c.Disconnect()
 
 	for aq, want := range testCases {
-		res, err := c.ReadHoldingRegisters(ctx, aq[0], aq[1])
+		res, err := c.ReadHoldingRegisters(ctx, 1, aq[0], aq[1])
 		if err != nil {
 			t.Fatalf("read holding registers failed: %v", err)
 		}
@@ -150,7 +149,7 @@ func TestReadInputRegisters(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadInputRegisters: func(_ cancel.Context, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
+		ReadInputRegisters: func(_ cancel.Context, _ byte, address uint16, quantity uint16) (res []byte, ex modbus.Exception) {
 			if res, ok := testCases[[2]uint16{address, quantity}]; ok {
 				return res, 0
 			}
@@ -162,7 +161,7 @@ func TestReadInputRegisters(t *testing.T) {
 	defer c.Disconnect()
 
 	for aq, want := range testCases {
-		res, err := c.ReadInputRegisters(ctx, aq[0], aq[1])
+		res, err := c.ReadInputRegisters(ctx, 1, aq[0], aq[1])
 		if err != nil {
 			t.Fatalf("read input registers failed: %v", err)
 		}
@@ -188,7 +187,7 @@ func TestWriteSingleCoil(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteSingleCoil: func(_ cancel.Context, address uint16, status bool) (ex modbus.Exception) {
+		WriteSingleCoil: func(_ cancel.Context, _ byte, address uint16, status bool) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				if want != status {
 					t.Errorf("server received unexpected value handling function code WriteSingleCoil at address %v, got %v; wanted: %v", address, status, want)
@@ -205,7 +204,7 @@ func TestWriteSingleCoil(t *testing.T) {
 	defer c.Disconnect()
 
 	for a, want := range testCases {
-		if err := c.WriteSingleCoil(ctx, a, want); err != nil {
+		if err := c.WriteSingleCoil(ctx, 1, a, want); err != nil {
 			t.Fatalf("write single coil failed: %v", err)
 		}
 	}
@@ -225,7 +224,7 @@ func TestWriteSingleRegister(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteSingleRegister: func(_ cancel.Context, address uint16, value uint16) (ex modbus.Exception) {
+		WriteSingleRegister: func(_ cancel.Context, _ byte, address uint16, value uint16) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				if want != value {
 					t.Errorf("server received unexpected value handling function code WriteSingleRegister at address %v, got %v; wanted: %v", address, value, want)
@@ -242,7 +241,7 @@ func TestWriteSingleRegister(t *testing.T) {
 	defer c.Disconnect()
 
 	for a, want := range testCases {
-		if err := c.WriteSingleRegister(ctx, a, want); err != nil {
+		if err := c.WriteSingleRegister(ctx, 1, a, want); err != nil {
 			t.Fatalf("write single register failed: %v", err)
 		}
 	}
@@ -262,7 +261,7 @@ func TestWriteMultipleCoils(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteMultipleCoils: func(_ cancel.Context, address uint16, status []bool) (ex modbus.Exception) {
+		WriteMultipleCoils: func(_ cancel.Context, _ byte, address uint16, status []bool) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				for i := range want {
 					if want[i] != status[i] {
@@ -281,7 +280,7 @@ func TestWriteMultipleCoils(t *testing.T) {
 	defer c.Disconnect()
 
 	for a, want := range testCases {
-		if err := c.WriteMultipleCoils(ctx, a, want...); err != nil {
+		if err := c.WriteMultipleCoils(ctx, 1, a, want...); err != nil {
 			t.Fatalf("client: WriteMultipleCoils failed: %v", err)
 		}
 	}
@@ -301,7 +300,7 @@ func TestWriteMultipleRegisters(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		WriteMultipleRegisters: func(_ cancel.Context, address uint16, values []byte) (ex modbus.Exception) {
+		WriteMultipleRegisters: func(_ cancel.Context, _ byte, address uint16, values []byte) (ex modbus.Exception) {
 			if want, ok := testCases[address]; ok {
 				for i := range want {
 					if want[i] != values[i] {
@@ -320,7 +319,7 @@ func TestWriteMultipleRegisters(t *testing.T) {
 	defer c.Disconnect()
 
 	for a, want := range testCases {
-		if err := c.WriteMultipleRegisters(ctx, a, want); err != nil {
+		if err := c.WriteMultipleRegisters(ctx, 1, a, want); err != nil {
 			t.Fatalf("client: WriteMultipleRegisters failed: %v", err)
 		}
 	}
@@ -340,7 +339,7 @@ func TestReadWriteMultipleRegisters(t *testing.T) {
 	defer ctx.Cancel()
 
 	go s.Serve(ctx, &modbus.Mux{
-		ReadWriteMultipleRegisters: func(_ cancel.Context, rAddress uint16, rQuantity uint16, wAddress uint16, values []byte) (res []byte, ex modbus.Exception) {
+		ReadWriteMultipleRegisters: func(_ cancel.Context, _ byte, rAddress uint16, rQuantity uint16, wAddress uint16, values []byte) (res []byte, ex modbus.Exception) {
 			if want, ok := testCases[[3]uint16{rAddress, rQuantity, wAddress}]; ok {
 				for i, v := range want[1] {
 					if v != values[i] {
@@ -359,7 +358,7 @@ func TestReadWriteMultipleRegisters(t *testing.T) {
 	defer c.Disconnect()
 
 	for dst, want := range testCases {
-		res, err := c.ReadWriteMultipleRegisters(ctx, dst[0], dst[1], dst[2], want[1])
+		res, err := c.ReadWriteMultipleRegisters(ctx, 1, dst[0], dst[1], dst[2], want[1])
 		if err != nil {
 			t.Fatalf("client: ReadWriteMultipleRegisters failed: %v", err)
 		}

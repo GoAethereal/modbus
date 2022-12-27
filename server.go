@@ -9,6 +9,7 @@ import (
 // Server is the go implementation of a modbus slave.
 // Once serving it will listen for incoming requests and forward them to the modbus.Handler h.
 // Generally the intended use is as follows:
+//
 //	ctx := cancel.New()
 //	cfg := modbus.Config{
 //		Mode:     "tcp",
@@ -72,13 +73,13 @@ func (s *Server) handle(ctx cancel.Context, c connection, h Handler) {
 			defer wg.Done()
 			var res []byte
 			var ex Exception
-			code, req, err := s.decode(adu)
+			uid, code, req, err := s.decode(adu)
 
 			switch {
 			case err != nil:
 				return
 			case code < 0x80:
-				res, ex = h.Handle(ctx, code, req)
+				res, ex = h.Handle(ctx, uid, code, req)
 			default:
 				ex = IllegalFunction
 			}
@@ -92,7 +93,7 @@ func (s *Server) handle(ctx cancel.Context, c connection, h Handler) {
 				res = []byte{byte(SlaveDeviceFailure)}
 			}
 
-			res, _ = s.reply(code, res, adu)
+			res, _ = s.reply(uid, code, res, adu)
 			if err := c.tx(ctx, res); err != nil {
 				return
 			}
